@@ -1,0 +1,10 @@
+test/
+.github/
+.gitignore
+.npmignore
+*.log
+.env
+.env.*
+coverage/
+tmp/
+uploads/

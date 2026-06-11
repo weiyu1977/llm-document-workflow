@@ -1,0 +1,9 @@
+```json
+{
+  "documentSummary": {
+    "fileName": "truncated.pdf",
+    "documentType": "insurance_policy",
+    "summary": "This output is intentionally truncated"
+  },
+  "coverageHighlights": [
+    { "title": "Policy maximum", "detail": "$100,000"

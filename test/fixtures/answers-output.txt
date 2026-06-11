@@ -1,0 +1,33 @@
+{
+  "workflowId": "policy_analysis",
+  "version": "v1",
+  "answers": [
+    {
+      "questionId": "summary",
+      "title": "Document summary",
+      "answer": "This appears to be a visitor medical insurance certificate.",
+      "confidence": "high",
+      "sourceText": "Certificate of insurance",
+      "page": "1"
+    },
+    {
+      "questionId": "claim_preparation",
+      "title": "Claim preparation",
+      "answer": "Keep official documents, itemized bills, receipts, diagnosis records, and assistance approval codes.",
+      "confidence": "medium",
+      "sourceText": "Submit proof of loss and itemized bills",
+      "page": "7"
+    },
+    {
+      "questionId": "warnings",
+      "title": "Manual review",
+      "answer": "The 12-month look-back period and acute onset wording require manual review.",
+      "confidence": "medium",
+      "sourceText": "12 month look-back",
+      "page": "6"
+    }
+  ],
+  "manualReviewRequired": true,
+  "manualReviewReasons": ["Review pre-existing condition wording."],
+  "deadlines": []
+}

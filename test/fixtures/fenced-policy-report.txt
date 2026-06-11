@@ -1,0 +1,48 @@
+```json
+{
+  "documentSummary": {
+    "fileName": "sample.pdf",
+    "documentType": "insurance_policy",
+    "carrier": "Example Carrier",
+    "productName": "Example Visitor Plan",
+    "policyType": "comprehensive",
+    "summary": "Visitor medical policy with ER and claim requirements.",
+    "confidence": "high"
+  },
+  "coverageHighlights": [
+    { "title": "Policy maximum", "detail": "$100,000", "sourceText": "Maximum benefit $100,000", "page": "2", "confidence": "high" }
+  ],
+  "medicalBenefits": {
+    "er": [{ "title": "ER", "detail": "Covered subject to deductible.", "sourceText": "Emergency room treatment", "page": "4", "confidence": "medium" }],
+    "urgentCare": [],
+    "hospitalization": [],
+    "ambulance": [],
+    "surgery": []
+  },
+  "preExistingCondition": {
+    "summary": "Pre-existing conditions require review.",
+    "acuteOnset": "",
+    "lookbackPeriod": "12 months",
+    "ageLimits": [],
+    "warnings": []
+  },
+  "claimPreparation": [
+    { "title": "Itemized bill", "detail": "Keep itemized bill and diagnosis records.", "sourceText": "Submit itemized bills", "page": "8", "confidence": "high" }
+  ],
+  "deadlines": [
+    { "type": "claim", "date": "", "relativeRule": "within 90 days", "text": "Submit claim within 90 days.", "sourceText": "90 days", "page": "8", "confidence": "high" }
+  ],
+  "manualReview": {
+    "required": true,
+    "reasons": [
+      { "title": "Pre-existing", "detail": "Clarify pre-existing wording.", "sourceText": "pre-existing", "page": "6", "confidence": "medium" }
+    ]
+  },
+  "missingInformation": [],
+  "nextSteps": [
+    { "title": "Verify PDF", "detail": "Verify against official policy PDF.", "sourceText": "", "page": "", "confidence": "medium" }
+  ],
+  "citations": []
+}
+```
+Trailing text that Gemini sometimes adds.

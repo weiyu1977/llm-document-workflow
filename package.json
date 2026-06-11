@@ -1,0 +1,68 @@
+{
+  "name": "llm-document-workflow",
+  "version": "0.1.0",
+  "description": "Reusable LLM document workflow engine for prompt/schema management, provider adapters, output normalization, repair, and report contracts.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weiyu1977/llm-document-workflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/weiyu1977/llm-document-workflow/issues"
+  },
+  "homepage": "https://github.com/weiyu1977/llm-document-workflow#readme",
+  "exports": {
+    ".": {
+      "require": "./index.js",
+      "types": "./index.d.ts"
+    },
+    "./adapters/visitor-insurance-legacy": "./adapters/visitor-insurance-legacy.js",
+    "./normalizer/json-extractor": "./normalizer/json-extractor.js",
+    "./normalizer/json-schema-lite": "./normalizer/json-schema-lite.js",
+    "./normalizer/normalizer-registry": "./normalizer/normalizer-registry.js",
+    "./normalizer/policy-analysis-normalizer": "./normalizer/policy-analysis-normalizer.js",
+    "./normalizer/schema-validator": "./normalizer/schema-validator.js",
+    "./provider-adapters/mock-provider": "./provider-adapters/mock-provider.js",
+    "./provider-adapters/provider-registry": "./provider-adapters/provider-registry.js",
+    "./workflows/policy-analysis-default": "./workflows/policy-analysis-default.js"
+  },
+  "type": "commonjs",
+  "license": "Apache-2.0",
+  "private": false,
+  "files": [
+    "index.js",
+    "prompt-store.js",
+    "workflow-runner.js",
+    "errors.js",
+    "index.d.ts",
+    "adapters",
+    "docs",
+    "examples",
+    "normalizer",
+    "provider-adapters",
+    "schemas",
+    "workflows",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md"
+  ],
+  "scripts": {
+    "check": "node --check index.js && node --check prompt-store.js && node --check workflow-runner.js && node --check errors.js && node --check adapters/visitor-insurance-legacy.js && node --check provider-adapters/gemini-provider.js && node --check provider-adapters/mock-provider.js && node --check provider-adapters/provider-registry.js && node --check normalizer/json-extractor.js && node --check normalizer/json-schema-lite.js && node --check normalizer/schema-validator.js && node --check normalizer/repair-runner.js && node --check normalizer/markdown-fallback.js && node --check normalizer/normalizer-registry.js && node --check normalizer/policy-analysis-normalizer.js && node --check workflows/policy-analysis-default.js && node --check examples/basic-mock/index.js && node --check examples/custom-normalizer/index.js",
+    "test": "node test/self-test.js && node test/fixture-test.js"
+  },
+  "keywords": [
+    "llm",
+    "document",
+    "workflow",
+    "prompt",
+    "schema",
+    "normalizer",
+    "gemini",
+    "pdf",
+    "ocr"
+  ]
+}

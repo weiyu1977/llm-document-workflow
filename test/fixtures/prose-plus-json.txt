@@ -1,0 +1,38 @@
+Here is the structured result. Please verify against the policy PDF:
+
+{
+  "documentSummary": {
+    "fileName": "mixed-output.pdf",
+    "documentType": "insurance_policy",
+    "carrier": "",
+    "productName": "",
+    "policyType": "unknown",
+    "summary": "The document includes visitor medical coverage and claim instructions.",
+    "confidence": "medium"
+  },
+  "coverageHighlights": [],
+  "medicalBenefits": {
+    "er": [],
+    "urgentCare": [],
+    "hospitalization": [],
+    "ambulance": [],
+    "surgery": []
+  },
+  "preExistingCondition": {
+    "summary": "",
+    "acuteOnset": "",
+    "lookbackPeriod": "",
+    "ageLimits": [],
+    "warnings": []
+  },
+  "claimPreparation": [
+    { "title": "Receipts", "detail": "Keep receipts and itemized bills.", "sourceText": "receipts and bills", "page": "", "confidence": "medium" }
+  ],
+  "deadlines": [],
+  "manualReview": { "required": true, "reasons": [] },
+  "missingInformation": [],
+  "nextSteps": [],
+  "citations": []
+}
+
+I hope this helps.

@@ -1,0 +1,11 @@
+Policy analysis:
+- Claim preparation:
+  - itemized bill
+  - diagnosis records
+  - receipts
+- Manual review:
+  - pre-existing disease exclusion
+  - acute onset wording
+  - 12-month look-back period
+- Medical benefits:
+  - ER and hospital wording should be checked.

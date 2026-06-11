@@ -51,6 +51,9 @@ const engine = createDocumentWorkflowEngine({
   setSecret({ integrationId, secretName, secretValue, updatedBy }) {},
   extractText(vertexResponseJson) {},
   google: {
+    // Gemini Developer API key mode. If present, no Google Cloud project is required.
+    apiKey: async () => process.env.GEMINI_API_KEY,
+    // Vertex AI ADC mode. Used when apiKey is not present.
     projectId: async () => "my-gcp-project",
     location: () => "us-central1",
     model: () => "gemini-2.5-flash",
@@ -137,6 +140,15 @@ engine.registerProvider({
   }
 });
 ```
+
+### Built-In Gemini Provider Auth Modes
+
+The built-in `gemini` provider supports two auth modes:
+
+- Gemini Developer API key: set `google.apiKey`. No Google Cloud project is required.
+- Vertex AI ADC: set `google.projectId`, `google.location`, and `google.fetchJsonWithAdc`.
+
+If neither auth mode is configured, the provider throws `missing_gemini_credentials`; the host application should decide whether to show an error or fall back to a local parser.
 
 ## Normalizer Contract
 

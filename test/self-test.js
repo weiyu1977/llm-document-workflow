@@ -55,6 +55,48 @@ async function main() {
     }
   });
   assert.ok(engine.listProviders().some((provider) => provider.id === "custom_test"), "custom provider should be registered");
+  assert.ok(engine.listProviders().some((provider) => provider.id === "gemini" && /Gemini/.test(provider.name)), "Gemini provider should be registered");
+
+  let capturedGeminiUrl = "";
+  let capturedGeminiHeaders = {};
+  const apiKeyEngine = createDocumentWorkflowEngine({
+    google: {
+      apiKey: async () => "test-gemini-key",
+      model: () => "gemini-test-model",
+      projectId: async () => {
+        throw new Error("projectId should not be required when apiKey is configured");
+      }
+    },
+    fetchJson: async (url, payload, timeoutMs, headers) => {
+      capturedGeminiUrl = url;
+      capturedGeminiHeaders = headers;
+      return {
+        statusCode: 200,
+        body: "{}",
+        json: {
+          candidates: [{
+            finishReason: "STOP",
+            content: {
+              parts: [{
+                text: "{\"documentSummary\":{\"fileName\":\"api-key.pdf\",\"documentType\":\"insurance_policy\",\"policyType\":\"comprehensive\",\"summary\":\"API key mode works.\",\"confidence\":\"high\"},\"coverageHighlights\":[],\"medicalBenefits\":{\"er\":[],\"urgentCare\":[],\"hospitalization\":[],\"ambulance\":[],\"surgery\":[]},\"preExistingCondition\":{\"summary\":\"\",\"acuteOnset\":\"\",\"lookbackPeriod\":\"\",\"ageLimits\":[],\"warnings\":[]},\"claimPreparation\":[],\"deadlines\":[],\"manualReview\":{\"required\":false,\"reasons\":[]},\"missingInformation\":[],\"nextSteps\":[],\"citations\":[]}"
+              }]
+            }
+          }]
+        }
+      };
+    }
+  });
+  const apiKeyDefaults = apiKeyEngine.getDefaultWorkflow("policy_analysis");
+  apiKeyEngine.saveWorkflow("policy_analysis", { ...apiKeyDefaults, providerId: "gemini" }, "api-key-self-test");
+  const apiKeyResult = await apiKeyEngine.runToReport({
+    workflowId: "policy_analysis",
+    text: "sample",
+    fileName: "api-key.pdf"
+  });
+  assert.match(capturedGeminiUrl, /generativelanguage\.googleapis\.com/, "Gemini API key mode should use the Developer API endpoint");
+  assert.equal(capturedGeminiHeaders["x-goog-api-key"], "test-gemini-key", "Gemini API key should be sent as x-goog-api-key");
+  assert.equal(apiKeyResult.diagnostics.provider.mode, "developer-api-key-document-analysis");
+  assert.equal(apiKeyResult.normalizedReport.documentSummary.summary, "API key mode works.");
 
   console.log("llm-document-workflow self-test passed");
 }

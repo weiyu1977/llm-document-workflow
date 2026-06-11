@@ -60,6 +60,7 @@ const engine = createDocumentWorkflowEngine({
       .trim() || "";
   },
   google: {
+    apiKey: async () => process.env.GEMINI_API_KEY,
     projectId: async () => process.env.GOOGLE_CLOUD_PROJECT,
     location: () => process.env.VERTEX_AI_LOCATION || "us-central1",
     model: () => process.env.GEMINI_MODEL || "gemini-2.5-flash",
@@ -69,6 +70,8 @@ const engine = createDocumentWorkflowEngine({
   }
 });
 ```
+
+The built-in Gemini provider checks `apiKey` first. If an API key is present, it calls the Gemini Developer API directly and does not require a Google Cloud project. If no API key is present, it falls back to Vertex AI ADC.
 
 ## 5. Run a Workflow
 

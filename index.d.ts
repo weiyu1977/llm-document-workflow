@@ -97,6 +97,7 @@ export interface CreateDocumentWorkflowEngineOptions {
   legacyAdapters?: Record<string, Function>;
   google?: unknown;
   extractText?: Function;
+  fetchJson?: (url: string, payload: unknown, timeoutMs?: number, headers?: Record<string, string>) => Promise<{ statusCode: number; body?: string; json?: unknown }>;
 }
 
 export function createDocumentWorkflowEngine(options?: CreateDocumentWorkflowEngineOptions): DocumentWorkflowEngine;

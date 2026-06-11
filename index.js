@@ -22,7 +22,8 @@ function createDocumentWorkflowEngine(deps = {}) {
   const providerRegistry = createProviderRegistry({
     gemini: createGeminiProvider({
       google: deps.google,
-      extractText: deps.extractText
+      extractText: deps.extractText,
+      fetchJson: deps.fetchJson
     }),
     mock: createMockProvider()
   });

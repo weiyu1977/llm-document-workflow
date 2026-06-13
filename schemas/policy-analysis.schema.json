@@ -16,6 +16,7 @@
     "claimPreparation",
     "deadlines",
     "manualReview",
+    "qualityGate",
     "missingInformation",
     "nextSteps",
     "citations"
@@ -101,13 +102,14 @@
     },
     "accidentMedical": {
       "type": "object",
-      "required": ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "exclusions"],
+      "required": ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "medicalEvacuation", "exclusions"],
       "properties": {
         "er": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "hospitalization": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "surgery": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "ambulance": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "separateBilling": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "medicalEvacuation": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "exclusions": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
       }
     },
@@ -133,6 +135,15 @@
       "properties": {
         "required": { "type": "boolean" },
         "reasons": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
+      }
+    },
+    "qualityGate": {
+      "type": "object",
+      "required": ["status", "missingCriticalFields", "manualReviewReasons"],
+      "properties": {
+        "status": { "type": "string" },
+        "missingCriticalFields": { "type": "array" },
+        "manualReviewReasons": { "type": "array" }
       }
     },
     "missingInformation": { "type": "array", "items": { "$refLocal": "evidenceItem" } },

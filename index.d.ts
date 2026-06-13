@@ -15,6 +15,7 @@ export interface DocumentWorkflowConfig {
   systemPrompt: string;
   businessContext?: string;
   taskPrompt: string;
+  promptPack?: Record<string, string>;
   questions: WorkflowQuestion[];
   outputSchema: Record<string, unknown>;
   repairPrompt?: string;

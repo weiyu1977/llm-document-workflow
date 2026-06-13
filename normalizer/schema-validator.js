@@ -35,7 +35,7 @@ const medicalBenefitKeys = [
   "medicalEvacuation"
 ];
 
-const accidentMedicalKeys = ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "exclusions"];
+const accidentMedicalKeys = ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "medicalEvacuation", "exclusions"];
 
 const exclusionKeys = ["alcoholDrug", "hazardousActivity", "pregnancy", "routineCare", "mentalHealth", "sports", "residenceCountry", "general"];
 
@@ -172,6 +172,51 @@ function normalizePreExisting(value, candidate = {}) {
   };
 }
 
+function evidenceHasValue(item) {
+  return Boolean(item && (asText(item.finding) || asText(item.detail) || asText(item.sourceText)));
+}
+
+function listHasValue(items) {
+  return Array.isArray(items) && items.some(evidenceHasValue);
+}
+
+function evaluateQualityGate(report) {
+  const missingCriticalFields = [];
+  if (!listHasValue(report.financialTerms?.policyMaximum)) missingCriticalFields.push("policy maximum");
+  if (!listHasValue(report.financialTerms?.deductible)) missingCriticalFields.push("deductible");
+  const hasPreExisting = Boolean(
+    asText(report.preExistingCondition?.summary)
+    || asText(report.preExistingCondition?.definition)
+    || asText(report.preExistingCondition?.exclusion)
+    || asText(report.preExistingCondition?.acuteOnset)
+    || listHasValue(report.preExistingCondition?.warnings)
+  );
+  if (!hasPreExisting) missingCriticalFields.push("pre-existing condition / acute onset wording");
+  const hasClaimDeadline = (report.deadlines || []).some((item) => /claim|proof|notice|appeal/i.test(`${item.type} ${item.text} ${item.relativeRule}`));
+  if (!hasClaimDeadline) missingCriticalFields.push("claim notice / proof-of-loss deadline");
+  if (!listHasValue(report.exclusions?.general) && !Object.values(report.exclusions || {}).some(listHasValue)) missingCriticalFields.push("exclusions");
+  const lowConfidenceCount = [
+    ...(report.coverageHighlights || []),
+    ...(report.claimPreparation || []),
+    ...(report.manualReview?.reasons || []),
+    ...Object.values(report.financialTerms || {}).flat(),
+    ...Object.values(report.medicalBenefits || {}).flat(),
+    ...Object.values(report.accidentMedical || {}).flat(),
+    ...Object.values(report.exclusions || {}).flat()
+  ].filter((item) => item?.confidence === "low").length;
+  const manualReviewReasons = [
+    ...(report.manualReview?.reasons || []).map((item) => item.finding || item.detail || item.title).filter(Boolean),
+    ...missingCriticalFields.map((field) => `Missing critical field: ${field}`)
+  ];
+  if (lowConfidenceCount >= 3) manualReviewReasons.push(`Multiple low-confidence findings: ${lowConfidenceCount}`);
+  const status = missingCriticalFields.length || manualReviewReasons.length || report.manualReview?.required ? "needs_review" : "complete";
+  return {
+    status,
+    missingCriticalFields,
+    manualReviewReasons: [...new Set(manualReviewReasons)]
+  };
+}
+
 function answersToReport(parsed, fallback = {}) {
   fallback = fallback || {};
   const answers = Array.isArray(parsed.answers) ? parsed.answers : [];
@@ -215,6 +260,7 @@ function answersToReport(parsed, fallback = {}) {
       surgery: "Accident surgery",
       ambulance: "Accident ambulance",
       separateBilling: "Separate billing",
+      medicalEvacuation: "Medical evacuation",
       exclusions: "Accident exclusion"
     }),
     exclusions: normalizeEvidenceMap(parsed.exclusions || {}, exclusionKeys, {
@@ -236,6 +282,7 @@ function answersToReport(parsed, fallback = {}) {
     missingInformation: normalizeEvidenceList(parsed.missingInformation || parsed.missingInfo, "Missing information").concat(answerItem("missing_info", "Missing information")),
     nextSteps: normalizeEvidenceList(parsed.nextSteps, "Next step").concat(answerItem("next_steps", "Next step")),
     citations: normalizeEvidenceList(parsed.citations || parsed.sourceSnippets, "Citation"),
+    qualityGate: { status: "needs_review", missingCriticalFields: [], manualReviewReasons: [] },
     answers,
     rawDebug: parsed.rawDebug || {}
   };
@@ -246,6 +293,7 @@ function answersToReport(parsed, fallback = {}) {
   base.exclusions.general.push(...answerItem("exclusions", "Exclusion"));
   base.deadlines.push(...answerItem("claim_deadlines", "Claim deadline").map((item) => normalizeDeadline({ ...item, type: "claim", text: item.detail })));
   base.nextSteps.push(...answerItem("final_next_steps", "Next step"));
+  base.qualityGate = evaluateQualityGate(base);
   return base;
 }
 
@@ -318,6 +366,13 @@ function validatePolicyAnalysisReport(report) {
     if (typeof report.manualReview.required !== "boolean") errors.push("manualReview.required must be a boolean.");
     validateEvidenceListValue(report.manualReview.reasons, "manualReview.reasons", errors);
   }
+  if (!isObject(report.qualityGate)) {
+    errors.push("qualityGate is required.");
+  } else {
+    if (!report.qualityGate.status) errors.push("qualityGate.status is required.");
+    if (!Array.isArray(report.qualityGate.missingCriticalFields)) errors.push("qualityGate.missingCriticalFields must be an array.");
+    if (!Array.isArray(report.qualityGate.manualReviewReasons)) errors.push("qualityGate.manualReviewReasons must be an array.");
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -357,6 +412,7 @@ function normalizePolicyAnalysisReport(parsed, fallback = {}) {
       surgery: "Accident surgery",
       ambulance: "Accident ambulance",
       separateBilling: "Separate billing",
+      medicalEvacuation: "Medical evacuation",
       exclusions: "Accident exclusion"
     }),
     exclusions: normalizeEvidenceMap(candidate.exclusions || {}, exclusionKeys, {
@@ -378,9 +434,18 @@ function normalizePolicyAnalysisReport(parsed, fallback = {}) {
     missingInformation: normalizeEvidenceList(candidate.missingInformation, "Missing information"),
     nextSteps: normalizeEvidenceList(candidate.nextSteps, "Next step"),
     citations: normalizeEvidenceList(candidate.citations, "Citation"),
+    qualityGate: { status: "needs_review", missingCriticalFields: [], manualReviewReasons: [] },
     answers: Array.isArray(candidate.answers) ? candidate.answers : [],
     rawDebug: candidate.rawDebug || {}
   };
+  report.qualityGate = isObject(candidate.qualityGate)
+    ? {
+      ...evaluateQualityGate(report),
+      ...candidate.qualityGate,
+      missingCriticalFields: Array.isArray(candidate.qualityGate.missingCriticalFields) ? candidate.qualityGate.missingCriticalFields : evaluateQualityGate(report).missingCriticalFields,
+      manualReviewReasons: Array.isArray(candidate.qualityGate.manualReviewReasons) ? candidate.qualityGate.manualReviewReasons : evaluateQualityGate(report).manualReviewReasons
+    }
+    : evaluateQualityGate(report);
   return { report, validation: validatePolicyAnalysisReport(report) };
 }
 

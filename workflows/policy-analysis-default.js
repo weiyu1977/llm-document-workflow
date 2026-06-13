@@ -27,6 +27,17 @@ function deadlineSchema() {
 }
 
 function defaultPolicyAnalysisWorkflow() {
+  const promptPack = {
+    document_identity_prompt: "Extract carrier, product, policy/certificate number, insured names, coverage start/end, trip dates, destination area, effective area, residence/origin country, assistance phone, and network/PPO if present.",
+    medical_benefit_prompt: "Extract ER, urgent care, hospitalization, ICU, surgery, physician visits, diagnostics, ambulance, prescription drugs, dental, and medical evacuation wording. Keep each benefit category separate.",
+    financial_risk_prompt: "Extract policy maximum, deductible, coinsurance, out-of-pocket maximum, per-incident limits, benefit caps, fixed/limited benefit schedule clues, and any high-dollar exposure.",
+    pre_existing_prompt: "Extract pre-existing condition definition, exclusions, acute onset wording, stable period or stability requirement, look-back period, waiting period, age caps, coverage limits, and warnings.",
+    accident_medical_prompt: "Extract wording relevant to car accident or other accident injury: ER, hospital, surgery, ambulance, separate physician billing, medical evacuation, exclusions, prior authorization, and assistance requirements.",
+    claim_deadline_prompt: "Extract claim materials, notice deadline, proof-of-loss deadline, claim form, itemized bill, receipts, authorization/precertification requirements, appeal deadlines, and submission methods.",
+    exclusion_prompt: "Extract exclusions for alcohol/drugs, hazardous activities, pregnancy, routine care, mental health, sports, residence country, unlawful acts, and general exclusions.",
+    manual_review_prompt: "List every ambiguity, low-confidence result, missing document, exclusion, high age risk, already-in-U.S. symptom issue, recent treatment issue, incomplete PDF, or wording that requires human review.",
+    final_report_prompt: "Give practical next steps after analysis, including what to verify, what to save, which deadlines to add to calendar, and what to ask the carrier."
+  };
   return {
     workflowId: "policy_analysis",
     version: "v2",
@@ -54,16 +65,17 @@ function defaultPolicyAnalysisWorkflow() {
       "For each extracted item, include: finding, detail, whyItMatters, userAction, sourceText, page, confidence, and manualReviewRequired.",
       "Use low confidence when the wording is missing, only implied, or requires the carrier to confirm."
     ].join("\n"),
+    promptPack,
     questions: [
-      { id: "document_identity", title: "Document identity", prompt: "Extract carrier, product, policy/certificate number, insured names, coverage start/end, trip dates, destination area, effective area, residence/origin country, assistance phone, and network/PPO if present." },
-      { id: "financial_terms", title: "Financial terms", prompt: "Extract policy maximum, deductible, coinsurance, out-of-pocket maximum, per-incident limits, benefit caps, and any fixed/limited benefit schedule clues." },
-      { id: "medical_benefits", title: "Medical benefits", prompt: "Extract ER, urgent care, hospitalization, ICU, surgery, physician visits, diagnostics, ambulance, prescription drugs, dental, and medical evacuation wording. Keep each benefit category separate." },
-      { id: "pre_existing", title: "Pre-existing / acute onset", prompt: "Extract pre-existing condition definition, exclusions, acute onset wording, stability requirement, look-back period, waiting period, age limits, coverage limits, and warnings." },
-      { id: "accident_medical", title: "Accident medical", prompt: "Extract wording relevant to car accident or other accident injury: ER, hospital, surgery, ambulance, separate billing, exclusions, prior authorization, and assistance requirements." },
-      { id: "exclusions", title: "Exclusions", prompt: "Extract exclusions for alcohol/drugs, hazardous activities, pregnancy, routine care, mental health, sports, residence country, unlawful acts, and general exclusions." },
-      { id: "claim_deadlines", title: "Claims and deadlines", prompt: "Extract claim materials, itemized bill, diagnosis records, receipts, proof of travel, approval codes, claim form, notice/proof-of-loss deadlines, appeal deadlines, and submission methods." },
-      { id: "manual_review", title: "Manual review", prompt: "List every ambiguity, missing document, exclusion, high-risk clause, already-in-U.S. symptom issue, recent treatment issue, or wording that requires human review." },
-      { id: "final_next_steps", title: "Next steps", prompt: "Give practical next steps after analysis, including what to verify, what to save, which deadlines to add to calendar, and what to ask the carrier." }
+      { id: "document_identity_prompt", title: "Document identity", prompt: promptPack.document_identity_prompt },
+      { id: "medical_benefit_prompt", title: "Medical benefits", prompt: promptPack.medical_benefit_prompt },
+      { id: "financial_risk_prompt", title: "Financial risk", prompt: promptPack.financial_risk_prompt },
+      { id: "pre_existing_prompt", title: "Pre-existing / acute onset", prompt: promptPack.pre_existing_prompt },
+      { id: "accident_medical_prompt", title: "Accident medical", prompt: promptPack.accident_medical_prompt },
+      { id: "claim_deadline_prompt", title: "Claims and deadlines", prompt: promptPack.claim_deadline_prompt },
+      { id: "exclusion_prompt", title: "Exclusions", prompt: promptPack.exclusion_prompt },
+      { id: "manual_review_prompt", title: "Manual review", prompt: promptPack.manual_review_prompt },
+      { id: "final_report_prompt", title: "Final report", prompt: promptPack.final_report_prompt }
     ],
     outputSchema: {
       documentSummary: {
@@ -130,6 +142,7 @@ function defaultPolicyAnalysisWorkflow() {
         surgery: [itemSchema("accident surgery wording")],
         ambulance: [itemSchema("accident ambulance wording")],
         separateBilling: [itemSchema("separate billing or provider billing wording")],
+        medicalEvacuation: [itemSchema("accident medical evacuation wording")],
         exclusions: [itemSchema("accident medical exclusion")]
       },
       exclusions: {
@@ -159,7 +172,7 @@ function defaultPolicyAnalysisWorkflow() {
     ].join("\n"),
     displayConfig: {
       renderer: "policy-analysis-report",
-      primarySections: ["documentSummary", "identity", "financialTerms", "medicalBenefits", "preExistingCondition", "accidentMedical", "exclusions", "claimPreparation", "deadlines", "manualReview", "missingInformation", "nextSteps"]
+      primarySections: ["documentSummary", "identity", "medicalBenefits", "financialTerms", "preExistingCondition", "accidentMedical", "claimPreparation", "deadlines", "exclusions", "manualReview", "missingInformation", "nextSteps"]
     }
   };
 }

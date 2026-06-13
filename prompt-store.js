@@ -19,6 +19,7 @@ function normalizeWorkflowConfig(config = {}) {
   const baseFactory = DEFAULT_WORKFLOWS[config.workflowId] || DEFAULT_WORKFLOWS.policy_analysis;
   const defaults = baseFactory();
   const questions = Array.isArray(config.questions) && config.questions.length ? config.questions : defaults.questions;
+  const promptPack = config.promptPack && typeof config.promptPack === "object" ? config.promptPack : defaults.promptPack;
   return {
     ...defaults,
     ...config,
@@ -28,6 +29,7 @@ function normalizeWorkflowConfig(config = {}) {
     model: String(config.model || defaults.model),
     normalizerId: String(config.normalizerId || defaults.normalizerId || config.workflowId || defaults.workflowId || "json_passthrough"),
     legacyAdapterId: String(config.legacyAdapterId ?? defaults.legacyAdapterId ?? ""),
+    promptPack,
     questions,
     outputSchema: config.outputSchema && typeof config.outputSchema === "object" ? config.outputSchema : defaults.outputSchema,
     displayConfig: config.displayConfig && typeof config.displayConfig === "object" ? config.displayConfig : defaults.displayConfig
@@ -77,6 +79,7 @@ function createPromptStore({ getSecret, setSecret }) {
       systemPrompt: read("systemPrompt", defaults.systemPrompt),
       businessContext: read("businessContext", defaults.businessContext),
       taskPrompt: read("taskPrompt", defaults.taskPrompt),
+      promptPack: read("promptPack", defaults.promptPack),
       questions: read("questions", defaults.questions),
       outputSchema: read("outputSchema", defaults.outputSchema),
       repairPrompt: read("repairPrompt", defaults.repairPrompt),
@@ -101,7 +104,7 @@ function createPromptStore({ getSecret, setSecret }) {
       updatedBy
     });
     ["version", "providerId", "model", "normalizerId", "legacyAdapterId", "parserStrategy", "systemPrompt", "businessContext", "taskPrompt", "repairPrompt", "maxOutputTokens", "timeoutMs"].forEach((field) => save(field, normalized[field]));
-    ["questions", "outputSchema", "displayConfig"].forEach((field) => save(field, normalized[field]));
+    ["promptPack", "questions", "outputSchema", "displayConfig"].forEach((field) => save(field, normalized[field]));
     return readWorkflow(workflowId);
   };
   return {

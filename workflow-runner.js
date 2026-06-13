@@ -7,6 +7,11 @@ function createRunId() {
 }
 
 function composePrompt(workflow, inputLabel = "") {
+  const promptPackLines = workflow.promptPack && typeof workflow.promptPack === "object"
+    ? Object.entries(workflow.promptPack)
+      .map(([key, value]) => `### ${key}\n${value}`)
+      .join("\n\n")
+    : "";
   const questionLines = (workflow.questions || [])
     .map((question, index) => `${index + 1}. [${question.id}] ${question.title}\n${question.prompt}`)
     .join("\n\n");
@@ -14,6 +19,7 @@ function composePrompt(workflow, inputLabel = "") {
     workflow.systemPrompt,
     workflow.businessContext ? `Business context:\n${workflow.businessContext}` : "",
     workflow.taskPrompt ? `Task:\n${workflow.taskPrompt}` : "",
+    promptPackLines ? `Prompt pack modules:\n${promptPackLines}` : "",
     questionLines ? `Questions to answer:\n${questionLines}` : "",
     "Required JSON schema:",
     JSON.stringify(workflow.outputSchema || {}, null, 2),
@@ -96,7 +102,9 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
       workflowId: workflow.workflowId,
       version: workflow.version,
       providerId: workflow.providerId,
-      model: workflow.model
+      model: workflow.model,
+      parserStrategy: workflow.parserStrategy || "",
+      promptPackKeys: workflow.promptPack && typeof workflow.promptPack === "object" ? Object.keys(workflow.promptPack) : []
     },
     normalizedReport: normalized.report,
     rawOutput,

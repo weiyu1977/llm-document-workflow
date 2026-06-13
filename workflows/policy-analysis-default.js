@@ -158,6 +158,11 @@ function defaultPolicyAnalysisWorkflow() {
       claimPreparation: [itemSchema("claim material or action")],
       deadlines: [deadlineSchema()],
       manualReview: { required: true, reasons: [itemSchema("manual review reason")] },
+      qualityGate: {
+        status: "complete|needs_review|incomplete",
+        missingCriticalFields: ["critical field that is absent or too ambiguous"],
+        manualReviewReasons: ["reason the report should be reviewed by a human"]
+      },
       missingInformation: [itemSchema("missing information")],
       nextSteps: [itemSchema("next step")],
       citations: [itemSchema("source citation")]

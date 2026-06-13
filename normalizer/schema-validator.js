@@ -3,6 +3,42 @@ const { validateJsonSchema } = require("./json-schema-lite");
 
 const confidenceValues = new Set(["high", "medium", "low"]);
 
+const identityKeys = [
+  "carrier",
+  "productName",
+  "policyNumber",
+  "certificateNumber",
+  "coverageStart",
+  "coverageEnd",
+  "destinationArea",
+  "effectiveArea",
+  "residenceCountry",
+  "assistancePhone",
+  "network"
+];
+
+const identityListKeys = ["insuredNames", "travelDates"];
+
+const financialTermKeys = ["policyMaximum", "deductible", "coinsurance", "outOfPocketMax", "perIncidentLimit", "benefitCaps"];
+
+const medicalBenefitKeys = [
+  "er",
+  "urgentCare",
+  "hospitalization",
+  "icu",
+  "ambulance",
+  "surgery",
+  "physician",
+  "diagnostics",
+  "prescriptionDrugs",
+  "dental",
+  "medicalEvacuation"
+];
+
+const accidentMedicalKeys = ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "exclusions"];
+
+const exclusionKeys = ["alcoholDrug", "hazardousActivity", "pregnancy", "routineCare", "mentalHealth", "sports", "residenceCountry", "general"];
+
 function asText(value) {
   return String(value || "").trim();
 }
@@ -11,27 +47,48 @@ function asArray(value) {
   return Array.isArray(value) ? value : value ? [value] : [];
 }
 
+function isObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function normalizeConfidence(value) {
   const text = asText(value).toLowerCase();
   return confidenceValues.has(text) ? text : "medium";
+}
+
+function asBoolean(value) {
+  if (typeof value === "boolean") return value;
+  const text = asText(value).toLowerCase();
+  return ["true", "yes", "y", "required", "manual", "review"].some((token) => text.includes(token));
 }
 
 function normalizeEvidenceItem(item, fallbackTitle = "") {
   if (typeof item === "string") {
     return {
       title: fallbackTitle || item.slice(0, 80),
+      finding: item,
       detail: item,
+      whyItMatters: "",
+      userAction: "",
+      manualReviewRequired: false,
       sourceText: "",
       page: "",
       confidence: "medium"
     };
   }
   const source = item && typeof item === "object" ? item : {};
+  const title = asText(source.title || source.label || fallbackTitle);
+  const finding = asText(source.finding || source.name || source.key || source.title || source.label || source.answer || source.text || source.value || source.item || fallbackTitle);
+  const detail = asText(source.detail || source.explanation || source.answer || source.text || source.value || source.item || source.finding || "");
   return {
-    title: asText(source.title || source.label || fallbackTitle),
-    detail: asText(source.detail || source.answer || source.text || source.value || source.item || ""),
-    sourceText: asText(source.sourceText || source.source || source.quote),
-    page: asText(source.page),
+    title,
+    finding,
+    detail,
+    whyItMatters: asText(source.whyItMatters || source.why || source.rationale || source.importance),
+    userAction: asText(source.userAction || source.action || source.nextStep || source.recommendation),
+    manualReviewRequired: asBoolean(source.manualReviewRequired ?? source.manualReview ?? source.requiresReview),
+    sourceText: asText(source.sourceText || source.source || source.quote || source.evidence),
+    page: asText(source.page || source.pageNumber),
     confidence: normalizeConfidence(source.confidence)
   };
 }
@@ -39,7 +96,14 @@ function normalizeEvidenceItem(item, fallbackTitle = "") {
 function normalizeEvidenceList(value, fallbackTitle = "") {
   return asArray(value)
     .map((item) => normalizeEvidenceItem(item, fallbackTitle))
-    .filter((item) => item.title || item.detail || item.sourceText);
+    .filter((item) => item.title || item.finding || item.detail || item.sourceText);
+}
+
+function normalizeSingleEvidence(value, fallbackTitle = "") {
+  const normalized = normalizeEvidenceItem(value, fallbackTitle);
+  return normalized.title || normalized.finding || normalized.detail || normalized.sourceText
+    ? normalized
+    : normalizeEvidenceItem({ title: fallbackTitle, confidence: "low" }, fallbackTitle);
 }
 
 function normalizeDeadline(item) {
@@ -48,47 +112,64 @@ function normalizeDeadline(item) {
     type: asText(source.type || "other"),
     date: asText(source.date),
     relativeRule: asText(source.relativeRule || source.rule),
-    text: asText(source.text || source.detail || source.title),
-    sourceText: asText(source.sourceText || source.source),
-    page: asText(source.page),
+    text: asText(source.text || source.detail || source.finding || source.title),
+    whyItMatters: asText(source.whyItMatters || source.why || source.rationale),
+    userAction: asText(source.userAction || source.action || source.nextStep),
+    sourceText: asText(source.sourceText || source.source || source.quote),
+    page: asText(source.page || source.pageNumber),
     confidence: normalizeConfidence(source.confidence)
   };
 }
 
-function isObject(value) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+function normalizeEvidenceMap(value, keys, labels = {}) {
+  const source = isObject(value) ? value : {};
+  return keys.reduce((result, key) => {
+    result[key] = normalizeEvidenceList(source[key], labels[key] || key);
+    return result;
+  }, {});
 }
 
-function validateEvidenceList(report, key, errors) {
-  if (!Array.isArray(report[key])) {
-    errors.push(`${key} must be an array.`);
-    return;
-  }
-  report[key].forEach((item, index) => {
-    if (!isObject(item)) errors.push(`${key}[${index}] must be an object.`);
-    if (isObject(item) && !item.title && !item.detail && !item.sourceText) {
-      errors.push(`${key}[${index}] must include title, detail, or sourceText.`);
-    }
+function normalizeIdentity(value, candidate = {}) {
+  const source = isObject(value) ? value : {};
+  const summary = isObject(candidate.documentSummary) ? candidate.documentSummary : {};
+  const result = {};
+  identityKeys.forEach((key) => {
+    result[key] = normalizeSingleEvidence(source[key] || summary[key] || candidate[key], key);
   });
-}
-
-function validateMedicalBenefits(report, errors) {
-  if (!isObject(report.medicalBenefits)) {
-    errors.push("medicalBenefits must be an object.");
-    return;
-  }
-  ["er", "urgentCare", "hospitalization", "ambulance", "surgery"].forEach((key) => {
-    if (!Array.isArray(report.medicalBenefits[key])) errors.push(`medicalBenefits.${key} must be an array.`);
+  identityListKeys.forEach((key) => {
+    result[key] = normalizeEvidenceList(source[key] || candidate[key], key);
   });
+  if (!result.carrier.finding && summary.carrier) result.carrier = normalizeSingleEvidence(summary.carrier, "carrier");
+  if (!result.productName.finding && summary.productName) result.productName = normalizeSingleEvidence(summary.productName, "productName");
+  return result;
 }
 
-function validatePreExistingCondition(report, errors) {
-  if (!isObject(report.preExistingCondition)) {
-    errors.push("preExistingCondition must be an object.");
-    return;
-  }
-  if (!Array.isArray(report.preExistingCondition.ageLimits)) errors.push("preExistingCondition.ageLimits must be an array.");
-  if (!Array.isArray(report.preExistingCondition.warnings)) errors.push("preExistingCondition.warnings must be an array.");
+function normalizeFinancialTerms(value, candidate = {}) {
+  const source = isObject(value) ? value : {};
+  return {
+    policyMaximum: normalizeEvidenceList(source.policyMaximum || candidate.policyMaximum || candidate.coverageHighlights, "Policy maximum"),
+    deductible: normalizeEvidenceList(source.deductible || candidate.deductible, "Deductible"),
+    coinsurance: normalizeEvidenceList(source.coinsurance || candidate.coinsurance, "Coinsurance"),
+    outOfPocketMax: normalizeEvidenceList(source.outOfPocketMax || candidate.outOfPocketMax, "Out-of-pocket maximum"),
+    perIncidentLimit: normalizeEvidenceList(source.perIncidentLimit || candidate.perIncidentLimit, "Per incident limit"),
+    benefitCaps: normalizeEvidenceList(source.benefitCaps || candidate.benefitCaps || candidate.benefitSchedule, "Benefit cap")
+  };
+}
+
+function normalizePreExisting(value, candidate = {}) {
+  const source = isObject(value) ? value : {};
+  return {
+    summary: asText(source.summary || candidate.preExisting || ""),
+    definition: asText(source.definition),
+    exclusion: asText(source.exclusion),
+    acuteOnset: asText(source.acuteOnset || candidate.acuteOnset || ""),
+    stabilityRequirement: asText(source.stabilityRequirement || source.stability || ""),
+    lookbackPeriod: asText(source.lookbackPeriod || candidate.lookbackPeriod || ""),
+    waitingPeriod: asText(source.waitingPeriod || ""),
+    ageLimits: normalizeEvidenceList(source.ageLimits || candidate.ageLimits, "Age limit"),
+    coverageLimits: normalizeEvidenceList(source.coverageLimits || source.limits, "Coverage limit"),
+    warnings: normalizeEvidenceList(source.warnings || candidate.warnings, "Pre-existing warning")
+  };
 }
 
 function answersToReport(parsed, fallback = {}) {
@@ -101,31 +182,51 @@ function answersToReport(parsed, fallback = {}) {
     if (!answer) return [];
     return normalizeEvidenceList([{ ...answer, title, detail: answer.answer || answer.text || answer.value }], title);
   };
-  return {
+  const base = {
     documentSummary: {
       fileName: asText(parsed.fileName || fallback.fileName),
       documentType: asText(parsed.documentType || "insurance_policy"),
       carrier: asText(parsed.carrier),
       productName: asText(parsed.productName),
       policyType: asText(parsed.policyType),
-      summary: answerText("summary") || asText(parsed.summary || fallback.summary),
-      confidence: normalizeConfidence(byId.get("summary")?.confidence)
+      summary: answerText("summary") || answerText("document_identity") || asText(parsed.summary || fallback.summary),
+      confidence: normalizeConfidence(byId.get("summary")?.confidence || byId.get("document_identity")?.confidence)
     },
+    identity: normalizeIdentity(parsed.identity, parsed),
     coverageHighlights: normalizeEvidenceList(parsed.coverageHighlights, "Coverage highlight").concat(answerItem("coverage_highlights", "Coverage highlights")),
-    medicalBenefits: {
-      er: normalizeEvidenceList(parsed.medicalBenefits?.er || parsed.er, "ER"),
-      urgentCare: normalizeEvidenceList(parsed.medicalBenefits?.urgentCare || parsed.urgentCare, "Urgent care"),
-      hospitalization: normalizeEvidenceList(parsed.medicalBenefits?.hospitalization || parsed.hospitalization, "Hospitalization"),
-      ambulance: normalizeEvidenceList(parsed.medicalBenefits?.ambulance || parsed.ambulance, "Ambulance"),
-      surgery: normalizeEvidenceList(parsed.medicalBenefits?.surgery || parsed.surgery, "Surgery")
-    },
-    preExistingCondition: {
-      summary: asText(parsed.preExistingCondition?.summary || parsed.preExisting || ""),
-      acuteOnset: asText(parsed.preExistingCondition?.acuteOnset || parsed.acuteOnset || ""),
-      lookbackPeriod: asText(parsed.preExistingCondition?.lookbackPeriod || parsed.lookbackPeriod || ""),
-      ageLimits: normalizeEvidenceList(parsed.preExistingCondition?.ageLimits || parsed.ageLimits, "Age limit"),
-      warnings: normalizeEvidenceList(parsed.preExistingCondition?.warnings || [], "Pre-existing warning")
-    },
+    financialTerms: normalizeFinancialTerms(parsed.financialTerms, parsed),
+    medicalBenefits: normalizeEvidenceMap(parsed.medicalBenefits || {}, medicalBenefitKeys, {
+      er: "ER",
+      urgentCare: "Urgent care",
+      hospitalization: "Hospitalization",
+      icu: "ICU",
+      ambulance: "Ambulance",
+      surgery: "Surgery",
+      physician: "Physician",
+      diagnostics: "Diagnostics",
+      prescriptionDrugs: "Prescription drugs",
+      dental: "Dental",
+      medicalEvacuation: "Medical evacuation"
+    }),
+    preExistingCondition: normalizePreExisting(parsed.preExistingCondition, parsed),
+    accidentMedical: normalizeEvidenceMap(parsed.accidentMedical || {}, accidentMedicalKeys, {
+      er: "Accident ER",
+      hospitalization: "Accident hospitalization",
+      surgery: "Accident surgery",
+      ambulance: "Accident ambulance",
+      separateBilling: "Separate billing",
+      exclusions: "Accident exclusion"
+    }),
+    exclusions: normalizeEvidenceMap(parsed.exclusions || {}, exclusionKeys, {
+      alcoholDrug: "Alcohol or drug exclusion",
+      hazardousActivity: "Hazardous activity",
+      pregnancy: "Pregnancy",
+      routineCare: "Routine care",
+      mentalHealth: "Mental health",
+      sports: "Sports",
+      residenceCountry: "Residence country",
+      general: "General exclusion"
+    }),
     claimPreparation: normalizeEvidenceList(parsed.claimPreparation, "Claim preparation").concat(answerItem("claim_preparation", "Claim preparation")),
     deadlines: asArray(parsed.deadlines).map(normalizeDeadline).filter((item) => item.text || item.date || item.relativeRule),
     manualReview: {
@@ -138,6 +239,57 @@ function answersToReport(parsed, fallback = {}) {
     answers,
     rawDebug: parsed.rawDebug || {}
   };
+  base.financialTerms.policyMaximum.push(...answerItem("financial_terms", "Financial terms"));
+  base.medicalBenefits.er.push(...answerItem("medical_benefits", "Medical benefits"));
+  base.preExistingCondition.warnings.push(...answerItem("pre_existing", "Pre-existing / acute onset"));
+  base.accidentMedical.er.push(...answerItem("accident_medical", "Accident medical"));
+  base.exclusions.general.push(...answerItem("exclusions", "Exclusion"));
+  base.deadlines.push(...answerItem("claim_deadlines", "Claim deadline").map((item) => normalizeDeadline({ ...item, type: "claim", text: item.detail })));
+  base.nextSteps.push(...answerItem("final_next_steps", "Next step"));
+  return base;
+}
+
+function validateEvidenceObject(value, key, errors) {
+  if (!isObject(value)) {
+    errors.push(`${key} must be an object.`);
+    return;
+  }
+  if (!["high", "medium", "low"].includes(value.confidence)) errors.push(`${key}.confidence must be high, medium, or low.`);
+}
+
+function validateEvidenceListValue(value, key, errors) {
+  if (!Array.isArray(value)) {
+    errors.push(`${key} must be an array.`);
+    return;
+  }
+  value.forEach((item, index) => validateEvidenceObject(item, `${key}[${index}]`, errors));
+}
+
+function validateEvidenceMap(report, key, keys, errors) {
+  if (!isObject(report[key])) {
+    errors.push(`${key} must be an object.`);
+    return;
+  }
+  keys.forEach((childKey) => validateEvidenceListValue(report[key][childKey], `${key}.${childKey}`, errors));
+}
+
+function validateIdentity(report, errors) {
+  if (!isObject(report.identity)) {
+    errors.push("identity must be an object.");
+    return;
+  }
+  identityKeys.forEach((key) => validateEvidenceObject(report.identity[key], `identity.${key}`, errors));
+  identityListKeys.forEach((key) => validateEvidenceListValue(report.identity[key], `identity.${key}`, errors));
+}
+
+function validatePreExistingCondition(report, errors) {
+  if (!isObject(report.preExistingCondition)) {
+    errors.push("preExistingCondition must be an object.");
+    return;
+  }
+  ["ageLimits", "coverageLimits", "warnings"].forEach((key) => {
+    validateEvidenceListValue(report.preExistingCondition[key], `preExistingCondition.${key}`, errors);
+  });
 }
 
 function validatePolicyAnalysisReport(report) {
@@ -151,15 +303,20 @@ function validatePolicyAnalysisReport(report) {
     if (!report.documentSummary.documentType) errors.push("documentSummary.documentType is required.");
     if (!["high", "medium", "low"].includes(report.documentSummary.confidence)) errors.push("documentSummary.confidence must be high, medium, or low.");
   }
-  ["coverageHighlights", "claimPreparation", "missingInformation", "nextSteps", "citations"].forEach((key) => validateEvidenceList(report, key, errors));
-  if (!Array.isArray(report.deadlines)) errors.push("deadlines must be an array.");
-  validateMedicalBenefits(report, errors);
+  validateIdentity(report, errors);
+  validateEvidenceListValue(report.coverageHighlights, "coverageHighlights", errors);
+  validateEvidenceMap(report, "financialTerms", financialTermKeys, errors);
+  validateEvidenceMap(report, "medicalBenefits", medicalBenefitKeys, errors);
   validatePreExistingCondition(report, errors);
+  validateEvidenceMap(report, "accidentMedical", accidentMedicalKeys, errors);
+  validateEvidenceMap(report, "exclusions", exclusionKeys, errors);
+  ["claimPreparation", "missingInformation", "nextSteps", "citations"].forEach((key) => validateEvidenceListValue(report[key], key, errors));
+  if (!Array.isArray(report.deadlines)) errors.push("deadlines must be an array.");
   if (!isObject(report.manualReview)) {
     errors.push("manualReview is required.");
   } else {
     if (typeof report.manualReview.required !== "boolean") errors.push("manualReview.required must be a boolean.");
-    if (!Array.isArray(report.manualReview.reasons)) errors.push("manualReview.reasons must be an array.");
+    validateEvidenceListValue(report.manualReview.reasons, "manualReview.reasons", errors);
   }
   return { ok: errors.length === 0, errors };
 }
@@ -177,21 +334,41 @@ function normalizePolicyAnalysisReport(parsed, fallback = {}) {
       summary: asText(candidate.documentSummary?.summary || fallback.summary),
       confidence: normalizeConfidence(candidate.documentSummary?.confidence)
     },
+    identity: normalizeIdentity(candidate.identity, candidate),
     coverageHighlights: normalizeEvidenceList(candidate.coverageHighlights, "Coverage highlight"),
-    medicalBenefits: {
-      er: normalizeEvidenceList(candidate.medicalBenefits?.er, "ER"),
-      urgentCare: normalizeEvidenceList(candidate.medicalBenefits?.urgentCare, "Urgent care"),
-      hospitalization: normalizeEvidenceList(candidate.medicalBenefits?.hospitalization, "Hospitalization"),
-      ambulance: normalizeEvidenceList(candidate.medicalBenefits?.ambulance, "Ambulance"),
-      surgery: normalizeEvidenceList(candidate.medicalBenefits?.surgery, "Surgery")
-    },
-    preExistingCondition: {
-      summary: asText(candidate.preExistingCondition?.summary),
-      acuteOnset: asText(candidate.preExistingCondition?.acuteOnset),
-      lookbackPeriod: asText(candidate.preExistingCondition?.lookbackPeriod),
-      ageLimits: normalizeEvidenceList(candidate.preExistingCondition?.ageLimits, "Age limit"),
-      warnings: normalizeEvidenceList(candidate.preExistingCondition?.warnings, "Pre-existing warning")
-    },
+    financialTerms: normalizeFinancialTerms(candidate.financialTerms, candidate),
+    medicalBenefits: normalizeEvidenceMap(candidate.medicalBenefits || {}, medicalBenefitKeys, {
+      er: "ER",
+      urgentCare: "Urgent care",
+      hospitalization: "Hospitalization",
+      icu: "ICU",
+      ambulance: "Ambulance",
+      surgery: "Surgery",
+      physician: "Physician",
+      diagnostics: "Diagnostics",
+      prescriptionDrugs: "Prescription drugs",
+      dental: "Dental",
+      medicalEvacuation: "Medical evacuation"
+    }),
+    preExistingCondition: normalizePreExisting(candidate.preExistingCondition, candidate),
+    accidentMedical: normalizeEvidenceMap(candidate.accidentMedical || {}, accidentMedicalKeys, {
+      er: "Accident ER",
+      hospitalization: "Accident hospitalization",
+      surgery: "Accident surgery",
+      ambulance: "Accident ambulance",
+      separateBilling: "Separate billing",
+      exclusions: "Accident exclusion"
+    }),
+    exclusions: normalizeEvidenceMap(candidate.exclusions || {}, exclusionKeys, {
+      alcoholDrug: "Alcohol or drug exclusion",
+      hazardousActivity: "Hazardous activity",
+      pregnancy: "Pregnancy",
+      routineCare: "Routine care",
+      mentalHealth: "Mental health",
+      sports: "Sports",
+      residenceCountry: "Residence country",
+      general: "General exclusion"
+    }),
     claimPreparation: normalizeEvidenceList(candidate.claimPreparation, "Claim preparation"),
     deadlines: asArray(candidate.deadlines).map(normalizeDeadline).filter((item) => item.text || item.date || item.relativeRule),
     manualReview: {

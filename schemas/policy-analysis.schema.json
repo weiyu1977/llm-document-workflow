@@ -6,9 +6,13 @@
   "additionalProperties": true,
   "required": [
     "documentSummary",
+    "identity",
     "coverageHighlights",
+    "financialTerms",
     "medicalBenefits",
     "preExistingCondition",
+    "accidentMedical",
+    "exclusions",
     "claimPreparation",
     "deadlines",
     "manualReview",
@@ -30,27 +34,95 @@
         "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
       }
     },
+    "identity": {
+      "type": "object",
+      "required": ["carrier", "productName", "policyNumber", "certificateNumber", "insuredNames", "coverageStart", "coverageEnd", "travelDates", "destinationArea", "effectiveArea", "residenceCountry", "assistancePhone", "network"],
+      "properties": {
+        "carrier": { "$refLocal": "evidenceItem" },
+        "productName": { "$refLocal": "evidenceItem" },
+        "policyNumber": { "$refLocal": "evidenceItem" },
+        "certificateNumber": { "$refLocal": "evidenceItem" },
+        "insuredNames": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "coverageStart": { "$refLocal": "evidenceItem" },
+        "coverageEnd": { "$refLocal": "evidenceItem" },
+        "travelDates": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "destinationArea": { "$refLocal": "evidenceItem" },
+        "effectiveArea": { "$refLocal": "evidenceItem" },
+        "residenceCountry": { "$refLocal": "evidenceItem" },
+        "assistancePhone": { "$refLocal": "evidenceItem" },
+        "network": { "$refLocal": "evidenceItem" }
+      }
+    },
     "coverageHighlights": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+    "financialTerms": {
+      "type": "object",
+      "required": ["policyMaximum", "deductible", "coinsurance", "outOfPocketMax", "perIncidentLimit", "benefitCaps"],
+      "properties": {
+        "policyMaximum": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "deductible": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "coinsurance": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "outOfPocketMax": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "perIncidentLimit": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "benefitCaps": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
+      }
+    },
     "medicalBenefits": {
       "type": "object",
-      "required": ["er", "urgentCare", "hospitalization", "ambulance", "surgery"],
+      "required": ["er", "urgentCare", "hospitalization", "icu", "ambulance", "surgery", "physician", "diagnostics", "prescriptionDrugs", "dental", "medicalEvacuation"],
       "properties": {
         "er": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "urgentCare": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "hospitalization": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "icu": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "ambulance": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
-        "surgery": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
+        "surgery": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "physician": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "diagnostics": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "prescriptionDrugs": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "dental": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "medicalEvacuation": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
       }
     },
     "preExistingCondition": {
       "type": "object",
-      "required": ["summary", "acuteOnset", "lookbackPeriod", "ageLimits", "warnings"],
+      "required": ["summary", "definition", "exclusion", "acuteOnset", "stabilityRequirement", "lookbackPeriod", "waitingPeriod", "ageLimits", "coverageLimits", "warnings"],
       "properties": {
         "summary": { "type": "string" },
+        "definition": { "type": "string" },
+        "exclusion": { "type": "string" },
         "acuteOnset": { "type": "string" },
+        "stabilityRequirement": { "type": "string" },
         "lookbackPeriod": { "type": "string" },
+        "waitingPeriod": { "type": "string" },
         "ageLimits": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "coverageLimits": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
         "warnings": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
+      }
+    },
+    "accidentMedical": {
+      "type": "object",
+      "required": ["er", "hospitalization", "surgery", "ambulance", "separateBilling", "exclusions"],
+      "properties": {
+        "er": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "hospitalization": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "surgery": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "ambulance": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "separateBilling": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "exclusions": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "required": ["alcoholDrug", "hazardousActivity", "pregnancy", "routineCare", "mentalHealth", "sports", "residenceCountry", "general"],
+      "properties": {
+        "alcoholDrug": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "hazardousActivity": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "pregnancy": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "routineCare": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "mentalHealth": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "sports": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "residenceCountry": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
+        "general": { "type": "array", "items": { "$refLocal": "evidenceItem" } }
       }
     },
     "claimPreparation": { "type": "array", "items": { "$refLocal": "evidenceItem" } },
@@ -72,10 +144,14 @@
   "$defsLocal": {
     "evidenceItem": {
       "type": "object",
-      "required": ["title", "detail", "sourceText", "page", "confidence"],
+      "required": ["title", "finding", "detail", "whyItMatters", "userAction", "manualReviewRequired", "sourceText", "page", "confidence"],
       "properties": {
         "title": { "type": "string" },
+        "finding": { "type": "string" },
         "detail": { "type": "string" },
+        "whyItMatters": { "type": "string" },
+        "userAction": { "type": "string" },
+        "manualReviewRequired": { "type": "boolean" },
         "sourceText": { "type": "string" },
         "page": { "type": "string" },
         "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
@@ -83,12 +159,14 @@
     },
     "deadlineItem": {
       "type": "object",
-      "required": ["type", "date", "relativeRule", "text", "sourceText", "page", "confidence"],
+      "required": ["type", "date", "relativeRule", "text", "whyItMatters", "userAction", "sourceText", "page", "confidence"],
       "properties": {
         "type": { "type": "string" },
         "date": { "type": "string" },
         "relativeRule": { "type": "string" },
         "text": { "type": "string" },
+        "whyItMatters": { "type": "string" },
+        "userAction": { "type": "string" },
         "sourceText": { "type": "string" },
         "page": { "type": "string" },
         "confidence": { "type": "string", "enum": ["high", "medium", "low"] }

@@ -28,15 +28,51 @@ function deadlineSchema() {
 
 function defaultPolicyAnalysisWorkflow() {
   const promptPack = {
-    document_identity_prompt: "Extract carrier, product, policy/certificate number, insured names, coverage start/end, trip dates, destination area, effective area, residence/origin country, assistance phone, and network/PPO if present.",
-    medical_benefit_prompt: "Extract ER, urgent care, hospitalization, ICU, surgery, physician visits, diagnostics, ambulance, prescription drugs, dental, and medical evacuation wording. Keep each benefit category separate.",
-    financial_risk_prompt: "Extract policy maximum, deductible, coinsurance, out-of-pocket maximum, per-incident limits, benefit caps, fixed/limited benefit schedule clues, and any high-dollar exposure.",
-    pre_existing_prompt: "Extract pre-existing condition definition, exclusions, acute onset wording, stable period or stability requirement, look-back period, waiting period, age caps, coverage limits, and warnings.",
-    accident_medical_prompt: "Extract wording relevant to car accident or other accident injury: ER, hospital, surgery, ambulance, separate physician billing, medical evacuation, exclusions, prior authorization, and assistance requirements.",
-    claim_deadline_prompt: "Extract claim materials, notice deadline, proof-of-loss deadline, claim form, itemized bill, receipts, authorization/precertification requirements, appeal deadlines, and submission methods.",
-    exclusion_prompt: "Extract exclusions for alcohol/drugs, hazardous activities, pregnancy, routine care, mental health, sports, residence country, unlawful acts, and general exclusions.",
-    manual_review_prompt: "List every ambiguity, low-confidence result, missing document, exclusion, high age risk, already-in-U.S. symptom issue, recent treatment issue, incomplete PDF, or wording that requires human review.",
-    final_report_prompt: "Give practical next steps after analysis, including what to verify, what to save, which deadlines to add to calendar, and what to ask the carrier."
+    document_identity_prompt: [
+      "Fill documentSummary and identity only from explicit document text.",
+      "Look for: carrier/underwriter, administrator, product/plan name, plan type, policy/certificate number, insured/traveler names, effective dates, trip dates, destination/covered area, residence/origin country, assistance phone, claim phone/email, PPO/network/direct billing wording.",
+      "If a value is missing, keep the field empty or create a low-confidence item with userAction='Ask carrier or check policy certificate'."
+    ].join(" "),
+    medical_benefit_prompt: [
+      "Fill medicalBenefits with separate arrays for er, urgentCare, hospitalization, icu, ambulance, surgery, physician, diagnostics, prescriptionDrugs, dental, and medicalEvacuation.",
+      "For each benefit, capture limit, deductible/excess, coinsurance, prior authorization/precertification, in-network/direct billing wording, reimbursement wording, and exclusions tied to that benefit.",
+      "Do not merge multiple benefits into one item."
+    ].join(" "),
+    financial_risk_prompt: [
+      "Fill financialTerms with policyMaximum, deductible, coinsurance, outOfPocketMax, perIncidentLimit, and benefitCaps.",
+      "Pay special attention to fixed/limited benefit schedules, per-service caps, per-day hospital caps, ER caps, surgery caps, ambulance caps, and whether the plan pays usual/customary/reasonable charges.",
+      "When the policy maximum is missing, mark qualityGate missingCriticalFields with policyMaximum."
+    ].join(" "),
+    pre_existing_prompt: [
+      "Fill preExistingCondition with definition, exclusion, acuteOnset, stabilityRequirement, lookbackPeriod, waitingPeriod, ageLimits, coverageLimits, and warnings.",
+      "Extract exact wording for pre-existing disease/condition, acute onset/sudden recurrence, stable period, look-back period, medication change, recent treatment, diagnosis pending, age cap, and dollar cap.",
+      "If the policy excludes pre-existing conditions broadly or acute onset is absent/unclear, add a manualReview reason."
+    ].join(" "),
+    accident_medical_prompt: [
+      "Fill accidentMedical for car accident or other accidental injury scenarios.",
+      "Extract ER, hospitalization, surgery, ambulance, separate physician billing, emergency medical evacuation, prior approval, assistance company coordination, and accident-related exclusions.",
+      "Focus on what a visitor should verify if injured in a car accident and needing ER, admission, surgery, or medical transport."
+    ].join(" "),
+    claim_deadline_prompt: [
+      "Fill claimPreparation and deadlines.",
+      "Extract notice deadline, proof-of-loss deadline, claim form requirement, itemized bill, medical records, receipts, passport/travel records, authorization, police/accident report, appeal deadline, mailing/email/fax submission methods, and assistance company approval codes.",
+      "Deadlines must use type, date or relativeRule, text, whyItMatters, userAction, sourceText, page, and confidence."
+    ].join(" "),
+    exclusion_prompt: [
+      "Fill exclusions with alcoholDrug, hazardousActivity, pregnancy, routineCare, mentalHealth, sports, residenceCountry, and general.",
+      "Also capture exclusions for war/riot, unlawful acts, self-inflicted injury, elective care, checkups, dental routine care, home/residence country care, professional sports, high-risk activities, and treatment without required approval.",
+      "Each exclusion item should explain why it matters and what the user should verify."
+    ].join(" "),
+    manual_review_prompt: [
+      "Fill manualReview.reasons and qualityGate.",
+      "Require human review when: traveler is high age, already in the U.S. with symptoms, recent hospitalization/surgery/medication change, pregnancy, chronic disease, missing certificate pages, scanned/unreadable PDF, low confidence key terms, policy maximum missing, pre-existing/acute onset unclear, claim deadline missing, or any direct-billing/network ambiguity.",
+      "Set manualReview.required=true if any reason exists."
+    ].join(" "),
+    final_report_prompt: [
+      "Fill missingInformation, nextSteps, and citations.",
+      "Next steps should tell the user what to verify with carrier, what documents to save, which deadlines to calendar, and when to seek licensed or human review.",
+      "Citations should be short source snippets with page numbers when available."
+    ].join(" ")
   };
   return {
     workflowId: "policy_analysis",
@@ -62,8 +98,11 @@ function defaultPolicyAnalysisWorkflow() {
       "Answer by filling the required PolicyAnalysisReport JSON object.",
       "Do not output markdown. Do not include prose before or after the JSON.",
       "The first character of the response must be { and the last character must be }.",
+      "Use exactly the top-level keys shown in the output schema. Do not rename keys and do not add wrapper keys such as answers, result, report, or analysis.",
       "Keep each item concise. Split long bullet paragraphs into separate structured items.",
+      "Use empty arrays for sections with no evidence. Do not omit required arrays or objects.",
       "For each extracted item, include: finding, detail, whyItMatters, userAction, sourceText, page, confidence, and manualReviewRequired.",
+      "Use confidence only as high, medium, or low.",
       "Use low confidence when the wording is missing, only implied, or requires the carrier to confirm."
     ].join("\n"),
     promptPack,

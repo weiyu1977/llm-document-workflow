@@ -64,5 +64,10 @@
     "gemini",
     "pdf",
     "ocr"
-  ]
+  ],
+  "dependencies": {
+    "best-effort-json-parser": "^1.4.1",
+    "jsonrepair": "^3.14.0",
+    "partial-json": "^0.1.7"
+  }
 }

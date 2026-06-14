@@ -23,7 +23,12 @@ async function repairWithProvider({ provider, workflow, rawOutput, validationErr
     diagnostics: {
       repaired: Boolean(parsedResult.parsed),
       repairParseMethod: parsedResult.method,
-      repairError: parsedResult.error || ""
+      repairError: parsedResult.error || "",
+      isPartial: Boolean(parsedResult.isPartial),
+      truncationDetected: Boolean(parsedResult.truncationDetected),
+      recoveredSections: parsedResult.recoveredSections || [],
+      repairedJson: parsedResult.repairedJson || "",
+      partialJson: parsedResult.partialJson || ""
     }
   };
 }

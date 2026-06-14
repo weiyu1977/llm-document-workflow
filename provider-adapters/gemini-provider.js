@@ -55,6 +55,8 @@ function createGeminiProvider(deps) {
         location,
         statusCode: result.statusCode,
         finishReason: result.json?.candidates?.[0]?.finishReason || "",
+        maxOutputTokens: generationConfig.maxOutputTokens,
+        responseMimeType: generationConfig.responseMimeType || "",
         rawText,
         rawJson: result.json
       };

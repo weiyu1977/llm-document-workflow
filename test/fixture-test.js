@@ -52,11 +52,14 @@ function testProsePlusJson() {
 
 function testTruncatedJsonFallback() {
   const result = parseJsonFromText(fixture("truncated-json.txt"));
-  assert.equal(result.parsed, null, "truncated JSON should not parse");
-  const report = markdownFallbackReport(fixture("truncated-json.txt"), { fileName: "truncated.pdf" });
-  const validation = validatePolicyAnalysisReport(report);
-  assert.equal(validation.ok, true, validation.errors.join("; "));
-  assert.equal(report.documentSummary.confidence, "low");
+  assert.ok(result.parsed, "truncated JSON should recover partial object");
+  assert.equal(result.isPartial, true, "truncated JSON should be marked partial");
+  assert.equal(result.truncationDetected, true, "truncated JSON should report truncation");
+  assert.ok(["jsonrepair", "partial_json", "best_effort_json"].includes(result.method), `unexpected parse method: ${result.method}`);
+  const normalized = normalizePolicyAnalysisReport(result.parsed, { fileName: "truncated.pdf" });
+  assert.equal(normalized.validation.ok, true, normalized.validation.errors.join("; "));
+  assert.match(normalized.report.documentSummary.summary, /truncated/i);
+  assert.ok(normalized.report.coverageHighlights.length >= 1, "partial coverage highlight should be recovered");
 }
 
 function testNestedBulletsFallback() {

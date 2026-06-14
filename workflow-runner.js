@@ -49,6 +49,12 @@ async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, f
   const parseStarted = Date.now();
   const parsedResult = parseJsonFromText(rawOutput);
   diagnostics.timingsMs.initialParse = Date.now() - parseStarted;
+  diagnostics.isPartial = Boolean(parsedResult.isPartial);
+  diagnostics.truncationDetected = Boolean(parsedResult.truncationDetected);
+  diagnostics.truncationMarker = parsedResult.truncationMarker || "";
+  diagnostics.recoveredSections = parsedResult.recoveredSections || [];
+  diagnostics.repairedJson = parsedResult.repairedJson || "";
+  diagnostics.partialJson = parsedResult.partialJson || "";
   let parsed = parsedResult.parsed;
   diagnostics.parseMethod = parsedResult.method;
   let normalized = parsed ? normalizer.normalize(parsed, fallbackAnalysis, { workflow }) : null;
@@ -64,12 +70,27 @@ async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, f
         diagnostics.repaired = true;
         diagnostics.repair = repaired.diagnostics;
         diagnostics.parseMethod = `repair:${repaired.diagnostics.repairParseMethod}`;
+        diagnostics.isPartial = Boolean(diagnostics.isPartial || repaired.diagnostics.isPartial);
+        diagnostics.truncationDetected = Boolean(diagnostics.truncationDetected || repaired.diagnostics.truncationDetected);
+        diagnostics.recoveredSections = repaired.diagnostics.recoveredSections || diagnostics.recoveredSections;
+        diagnostics.repairedJson = repaired.diagnostics.repairedJson || diagnostics.repairedJson;
+        diagnostics.partialJson = repaired.diagnostics.partialJson || diagnostics.partialJson;
       }
     } catch (error) {
       diagnostics.warnings.push(`repair_failed: ${error.message}`);
     }
   }
   if (!normalized || !normalized.validation.ok) {
+    if (parsed && normalized?.report) {
+      diagnostics.warnings.push("Partial structured report recovered; validation issues require review.");
+      diagnostics.errors.push(...(normalized.validation?.errors || []));
+      markPartialReport(normalized.report, diagnostics, "partial_recovered_with_validation_errors");
+      return {
+        report: normalized.report,
+        parsedOutput: parsed,
+        diagnostics
+      };
+    }
     diagnostics.parseMethod = diagnostics.repaired ? diagnostics.parseMethod : "markdown_fallback";
     diagnostics.warnings.push("Using markdown fallback report.");
     return {
@@ -79,10 +100,27 @@ async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, f
     };
   }
   return {
-    report: normalized.report,
+    report: markPartialReport(normalized.report, diagnostics),
     parsedOutput: parsed,
     diagnostics
   };
+}
+
+function markPartialReport(report, diagnostics, reason = "") {
+  if (!report || !diagnostics?.isPartial) return report;
+  const qualityGate = report.qualityGate && typeof report.qualityGate === "object" ? report.qualityGate : {};
+  const manualReviewReasons = Array.isArray(qualityGate.manualReviewReasons) ? [...qualityGate.manualReviewReasons] : [];
+  const missingCriticalFields = Array.isArray(qualityGate.missingCriticalFields) ? [...qualityGate.missingCriticalFields] : [];
+  if (diagnostics.truncationDetected) manualReviewReasons.push("Model output appears truncated; recovered sections need review.");
+  if (reason) manualReviewReasons.push(reason);
+  report.qualityGate = {
+    ...qualityGate,
+    status: qualityGate.status === "complete" ? "partial" : (qualityGate.status || "partial"),
+    missingCriticalFields: [...new Set(missingCriticalFields)],
+    manualReviewReasons: [...new Set(manualReviewReasons)]
+  };
+  if (report.manualReview && typeof report.manualReview === "object") report.manualReview.required = true;
+  return report;
 }
 
 async function runDocumentWorkflowToReport({ workflow, provider, normalizer, files = [], text = "", fileName = "", fallbackAnalysis = null }) {
@@ -97,8 +135,16 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
     mode: providerResult.mode,
     model: providerResult.model,
     finishReason: providerResult.finishReason,
-    statusCode: providerResult.statusCode
+    statusCode: providerResult.statusCode,
+    maxOutputTokens: providerResult.maxOutputTokens || workflow.maxOutputTokens || "",
+    responseMimeType: providerResult.responseMimeType || ""
   };
+  if (/MAX_TOKENS/i.test(String(providerResult.finishReason || ""))) {
+    normalized.diagnostics.truncationDetected = true;
+    normalized.diagnostics.isPartial = true;
+    normalized.diagnostics.warnings.push(`Provider stopped at MAX_TOKENS; increase maxOutputTokens above ${providerResult.maxOutputTokens || workflow.maxOutputTokens || "current value"}.`);
+    markPartialReport(normalized.report, normalized.diagnostics, "Provider stopped at MAX_TOKENS.");
+  }
   return {
     workflow: {
       workflowId: workflow.workflowId,

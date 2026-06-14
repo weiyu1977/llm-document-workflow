@@ -101,6 +101,65 @@ async function main() {
   assert.equal(apiKeyResult.diagnostics.provider.mode, "developer-api-key-document-analysis");
   assert.equal(apiKeyResult.normalizedReport.documentSummary.summary, "API key mode works.");
 
+  let continuationCalls = 0;
+  const continuationSaved = new Map();
+  const continuationEngine = createDocumentWorkflowEngine({
+    getSecret: (integrationId, secretName) => continuationSaved.get(`${integrationId}:${secretName}`),
+    setSecret: ({ integrationId, secretName, secretValue }) => {
+      continuationSaved.set(`${integrationId}:${secretName}`, secretValue);
+    }
+  });
+  const continuationDefaults = continuationEngine.getDefaultWorkflow("policy_analysis");
+  continuationEngine.registerProvider({
+    id: "truncated_test",
+    name: "Truncated Test Provider",
+    supportsText: true,
+    async generate({ mode }) {
+      if (mode === "continuation") {
+        continuationCalls += 1;
+        return {
+          providerId: "truncated_test",
+          mode: "continuation",
+          model: "test",
+          statusCode: 200,
+          finishReason: "STOP",
+          rawText: JSON.stringify({
+            financialTerms: {
+              policyMaximum: [{ title: "Policy maximum", finding: "$100,000", detail: "$100,000", confidence: "high" }],
+              deductible: [{ title: "Deductible", finding: "$250", detail: "$250", confidence: "high" }]
+            },
+            exclusions: {
+              general: [{ title: "General exclusions", finding: "Pre-existing conditions excluded unless acute onset applies.", detail: "Pre-existing conditions excluded unless acute onset applies.", confidence: "medium" }]
+            },
+            deadlines: [{ type: "claim", text: "Submit proof of loss within 90 days.", confidence: "medium" }]
+          })
+        };
+      }
+      return {
+        providerId: "truncated_test",
+        mode: "analysis",
+        model: "test",
+        statusCode: 200,
+        finishReason: "MAX_TOKENS",
+        maxOutputTokens: 64,
+        rawText: "{\"documentSummary\":{\"documentType\":\"insurance_policy\",\"carrier\":\"Truncated Carrier\",\"productName\":\"Visitor Medical\",\"summary\":\"Truncated sample\",\"confidence\":\"medium\"},\"medicalBenefits\":{\"er\":[{\"title\":\"ER\",\"finding\":\"Covered after deductible\",\"detail\":\"Covered after deductible\",\"confidence\":\"medium\"}]},\"preExistingCondition\":{\"summary\":\"Acute onset may be limited\""
+      };
+    }
+  });
+  continuationEngine.saveWorkflow("policy_analysis", { ...continuationDefaults, providerId: "truncated_test", maxOutputTokens: 64 }, "self-test");
+  const continuationResult = await continuationEngine.runToReport({
+    workflowId: "policy_analysis",
+    text: "sample",
+    fileName: "truncated.pdf"
+  });
+  assert.equal(continuationResult.diagnostics.provider.finishReason, "MAX_TOKENS");
+  assert.equal(continuationResult.diagnostics.truncationDetected, true);
+  assert.equal(continuationResult.diagnostics.continuation.attempted, true);
+  assert.equal(continuationCalls, 1, "MAX_TOKENS should trigger exactly one continuation request");
+  assert.notEqual(continuationResult.diagnostics.parseMethod, "markdown_fallback", "partial JSON should not markdown fallback");
+  assert.ok(continuationResult.normalizedReport.financialTerms.policyMaximum.length >= 1, "continuation should restore financial terms");
+  assert.ok(Array.isArray(continuationResult.diagnostics.failedSections), "section-level failedSections should be recorded");
+
   console.log("llm-document-workflow self-test passed");
 }
 

@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { parseJsonFromText } = require("../normalizer/json-extractor");
+const { runDocumentWorkflowToReport } = require("../workflow-runner");
+const { createPolicyAnalysisNormalizer } = require("../normalizer/policy-analysis-normalizer");
 const { markdownFallbackReport } = require("../normalizer/markdown-fallback");
 const { normalizePolicyAnalysisReport, validatePolicyAnalysisReport } = require("../normalizer/schema-validator");
 
@@ -62,6 +64,45 @@ function testTruncatedJsonFallback() {
   assert.ok(normalized.report.coverageHighlights.length >= 1, "partial coverage highlight should be recovered");
 }
 
+async function testWorkflowPartialDoesNotMarkdownFallback() {
+  const normalizer = createPolicyAnalysisNormalizer();
+  const provider = {
+    async generate() {
+      return {
+        providerId: "fixture",
+        mode: "analysis",
+        model: "fixture",
+        statusCode: 200,
+        finishReason: "MAX_TOKENS",
+        maxOutputTokens: 128,
+        rawText: fixture("truncated-json.txt")
+      };
+    }
+  };
+  const workflow = {
+    workflowId: "policy_analysis",
+    version: "test",
+    providerId: "fixture",
+    model: "fixture",
+    parserStrategy: "policy_report_json_v2",
+    outputSchema: {},
+    maxOutputTokens: 128
+  };
+  const result = await runDocumentWorkflowToReport({
+    workflow,
+    provider,
+    normalizer,
+    text: "sample",
+    fileName: "truncated.pdf",
+    fallbackAnalysis: { fileName: "truncated.pdf", summary: "fallback" }
+  });
+  assert.notEqual(result.diagnostics.parseMethod, "markdown_fallback", "partial JSON should not use markdown fallback");
+  assert.equal(result.diagnostics.truncationDetected, true, "MAX_TOKENS should mark truncation");
+  assert.ok(result.diagnostics.recoveredSections.length >= 1, "recoveredSections should be populated");
+  assert.ok(Array.isArray(result.diagnostics.failedSections), "failedSections should be populated");
+  assert.equal(result.normalizedReport.qualityGate.status, "partial");
+}
+
 function testNestedBulletsFallback() {
   const report = markdownFallbackReport(fixture("nested-bullets.txt"), { fileName: "nested-bullets.txt" });
   const validation = validatePolicyAnalysisReport(report);
@@ -78,4 +119,9 @@ testProsePlusJson();
 testTruncatedJsonFallback();
 testNestedBulletsFallback();
 
-console.log("llm-document-workflow fixture tests passed");
+testWorkflowPartialDoesNotMarkdownFallback()
+  .then(() => console.log("llm-document-workflow fixture tests passed"))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

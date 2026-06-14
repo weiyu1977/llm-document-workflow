@@ -2,6 +2,22 @@ const crypto = require("node:crypto");
 const { parseJsonFromText } = require("./normalizer/json-extractor");
 const { repairWithProvider } = require("./normalizer/repair-runner");
 
+const POLICY_REPORT_SECTIONS = [
+  "documentSummary",
+  "identity",
+  "financialTerms",
+  "coverageHighlights",
+  "medicalBenefits",
+  "preExistingCondition",
+  "accidentMedical",
+  "exclusions",
+  "claimPreparation",
+  "deadlines",
+  "manualReview",
+  "missingInformation",
+  "nextSteps"
+];
+
 function createRunId() {
   return `dwf_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 }
@@ -35,6 +51,132 @@ function composePrompt(workflow, inputLabel = "") {
     ].join("\n"),
     inputLabel ? `Input label: ${inputLabel}` : ""
   ].filter(Boolean).join("\n\n");
+}
+
+function composeContinuationPrompt(workflow, missingSections = []) {
+  const sectionList = missingSections.length ? missingSections : POLICY_REPORT_SECTIONS;
+  return [
+    workflow.systemPrompt,
+    workflow.businessContext ? `Business context:\n${workflow.businessContext}` : "",
+    "The previous response was truncated before all sections were returned.",
+    `Return strict JSON only for these missing PolicyAnalysisReport sections: ${sectionList.join(", ")}.`,
+    "Do not repeat already completed sections unless needed to make a missing section understandable.",
+    "Use the same schema shape as the original PolicyAnalysisReport for each returned section.",
+    "If a section is not present in the document, return an empty section and add a manualReview reason.",
+    "The response must start with { and end with }.",
+    "Required JSON schema:",
+    JSON.stringify(workflow.outputSchema || {}, null, 2)
+  ].filter(Boolean).join("\n\n");
+}
+
+function isObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasText(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasMeaningfulValue(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some(hasMeaningfulValue);
+  if (typeof value === "string") return hasText(value);
+  if (typeof value === "number" || typeof value === "boolean") return true;
+  if (typeof value === "object") return Object.values(value).some(hasMeaningfulValue);
+  return false;
+}
+
+function evidenceItemHasContent(item) {
+  if (!isObject(item)) return hasMeaningfulValue(item);
+  return ["finding", "detail", "sourceText", "text", "answer", "value", "summary", "date", "relativeRule"]
+    .some((key) => hasText(item[key]) || (Array.isArray(item[key]) && item[key].some(hasMeaningfulValue)));
+}
+
+function evidenceContainerHasContent(value) {
+  if (Array.isArray(value)) return value.some(evidenceItemHasContent);
+  if (!isObject(value)) return hasMeaningfulValue(value);
+  return Object.values(value).some((child) => {
+    if (Array.isArray(child)) return child.some(evidenceItemHasContent);
+    if (isObject(child)) return evidenceItemHasContent(child) || evidenceContainerHasContent(child);
+    return hasMeaningfulValue(child);
+  });
+}
+
+function sectionHasContent(report, section) {
+  if (!report || !section) return false;
+  if (section === "qualityGate") return true;
+  if (section === "documentSummary") {
+    const summary = report.documentSummary || {};
+    return ["carrier", "productName", "policyType", "summary"].some((key) => hasText(summary[key]));
+  }
+  if (section === "preExistingCondition") {
+    const value = report.preExistingCondition || {};
+    return ["summary", "definition", "exclusion", "acuteOnset", "stabilityRequirement", "lookbackPeriod", "waitingPeriod"]
+      .some((key) => hasText(value[key]))
+      || evidenceContainerHasContent(value.ageLimits)
+      || evidenceContainerHasContent(value.coverageLimits)
+      || evidenceContainerHasContent(value.warnings);
+  }
+  if (section === "manualReview") return Boolean(report.manualReview?.required || evidenceContainerHasContent(report.manualReview?.reasons));
+  return evidenceContainerHasContent(report[section]);
+}
+
+function mergeJson(base, extra) {
+  if (Array.isArray(base) || Array.isArray(extra)) {
+    const left = Array.isArray(base) ? base : [];
+    const right = Array.isArray(extra) ? extra : [];
+    return [...left, ...right];
+  }
+  if (isObject(base) && isObject(extra)) {
+    const merged = { ...base };
+    Object.entries(extra).forEach(([key, value]) => {
+      merged[key] = key in merged ? mergeJson(merged[key], value) : value;
+    });
+    return merged;
+  }
+  return hasMeaningfulValue(extra) ? extra : base;
+}
+
+function mergeReports(base, extra) {
+  if (!base) return extra;
+  if (!extra) return base;
+  return mergeJson(base, extra);
+}
+
+function applySectionDiagnostics(report, diagnostics) {
+  if (!report || !diagnostics) return report;
+  const recovered = new Set((diagnostics.recoveredSections || []).filter((section) => POLICY_REPORT_SECTIONS.includes(section)));
+  POLICY_REPORT_SECTIONS.forEach((section) => {
+    if (sectionHasContent(report, section)) recovered.add(section);
+  });
+  const failed = POLICY_REPORT_SECTIONS.filter((section) => !recovered.has(section));
+  diagnostics.recoveredSections = [...recovered];
+  diagnostics.failedSections = failed;
+  if (failed.length) {
+    diagnostics.isPartial = true;
+    const qualityGate = report.qualityGate && typeof report.qualityGate === "object" ? report.qualityGate : {};
+    const manualReviewReasons = Array.isArray(qualityGate.manualReviewReasons) ? [...qualityGate.manualReviewReasons] : [];
+    const missingCriticalFields = Array.isArray(qualityGate.missingCriticalFields) ? [...qualityGate.missingCriticalFields] : [];
+    failed.forEach((section) => {
+      manualReviewReasons.push(`Section unavailable: ${section}`);
+    });
+    report.qualityGate = {
+      ...qualityGate,
+      status: "partial",
+      missingCriticalFields: [...new Set(missingCriticalFields)],
+      manualReviewReasons: [...new Set(manualReviewReasons)],
+      manualReviewRequired: true
+    };
+    report.manualReview = report.manualReview && typeof report.manualReview === "object"
+      ? report.manualReview
+      : { required: true, reasons: [] };
+    report.manualReview.required = true;
+    report.rawDebug = {
+      ...(report.rawDebug || {}),
+      unavailableSections: failed
+    };
+  }
+  return report;
 }
 
 async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, fallbackAnalysis }) {
@@ -86,7 +228,7 @@ async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, f
       diagnostics.errors.push(...(normalized.validation?.errors || []));
       markPartialReport(normalized.report, diagnostics, "partial_recovered_with_validation_errors");
       return {
-        report: normalized.report,
+        report: applySectionDiagnostics(normalized.report, diagnostics),
         parsedOutput: parsed,
         diagnostics
       };
@@ -100,7 +242,7 @@ async function normalizeRawOutput({ rawOutput, workflow, provider, normalizer, f
     };
   }
   return {
-    report: markPartialReport(normalized.report, diagnostics),
+    report: applySectionDiagnostics(markPartialReport(normalized.report, diagnostics), diagnostics),
     parsedOutput: parsed,
     diagnostics
   };
@@ -128,7 +270,7 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
   const prompt = composePrompt(workflow, fileName || files[0]?.originalname || files[0]?.name || "document");
   const providerResult = await provider.generate({ workflow, files, text, prompt, mode: "analysis" });
   const rawOutput = providerResult.rawText || "";
-  const normalized = await normalizeRawOutput({ rawOutput, workflow, provider, normalizer, fallbackAnalysis });
+  let normalized = await normalizeRawOutput({ rawOutput, workflow, provider, normalizer, fallbackAnalysis });
   normalized.diagnostics.timingsMs.total = Date.now() - started;
   normalized.diagnostics.provider = {
     providerId: providerResult.providerId,
@@ -144,6 +286,49 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
     normalized.diagnostics.isPartial = true;
     normalized.diagnostics.warnings.push(`Provider stopped at MAX_TOKENS; increase maxOutputTokens above ${providerResult.maxOutputTokens || workflow.maxOutputTokens || "current value"}.`);
     markPartialReport(normalized.report, normalized.diagnostics, "Provider stopped at MAX_TOKENS.");
+    applySectionDiagnostics(normalized.report, normalized.diagnostics);
+    if (normalized.parsedOutput && normalized.diagnostics.failedSections?.length) {
+      const continuationStarted = Date.now();
+      try {
+        const continuationPrompt = composeContinuationPrompt(workflow, normalized.diagnostics.failedSections);
+        const continuationResult = await provider.generate({ workflow, files, text, prompt: continuationPrompt, mode: "continuation" });
+        const continuation = await normalizeRawOutput({
+          rawOutput: continuationResult.rawText || "",
+          workflow,
+          provider,
+          normalizer,
+          fallbackAnalysis
+        });
+        const mergedParsed = mergeJson(normalized.parsedOutput || {}, continuation.parsedOutput || {});
+        const merged = normalizer.normalize(mergedParsed, fallbackAnalysis, { workflow });
+        if (merged?.report) {
+          normalized.parsedOutput = mergedParsed;
+          normalized.report = applySectionDiagnostics(mergeReports(normalized.report, merged.report), normalized.diagnostics);
+          normalized.diagnostics.continuation = {
+            attempted: true,
+            finishReason: continuationResult.finishReason || "",
+            statusCode: continuationResult.statusCode,
+            parseMethod: continuation.diagnostics.parseMethod,
+            recoveredSections: continuation.diagnostics.recoveredSections || [],
+            failedSections: continuation.diagnostics.failedSections || [],
+            elapsedMs: Date.now() - continuationStarted
+          };
+          normalized.diagnostics.recoveredSections = [...new Set([
+            ...(normalized.diagnostics.recoveredSections || []),
+            ...(continuation.diagnostics.recoveredSections || [])
+          ])];
+          applySectionDiagnostics(normalized.report, normalized.diagnostics);
+          normalized.diagnostics.warnings.push("MAX_TOKENS continuation attempted for missing sections.");
+        }
+      } catch (error) {
+        normalized.diagnostics.continuation = {
+          attempted: true,
+          error: error.message,
+          elapsedMs: Date.now() - continuationStarted
+        };
+        normalized.diagnostics.warnings.push(`MAX_TOKENS continuation failed: ${error.message}`);
+      }
+    }
   }
   return {
     workflow: {

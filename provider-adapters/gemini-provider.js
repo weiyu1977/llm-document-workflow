@@ -28,13 +28,16 @@ function createGeminiProvider(deps) {
         }
       });
       if (text) parts.push({ text: String(text) });
+      const generationConfig = {
+        temperature: Number(workflow.temperature ?? 0.1),
+        maxOutputTokens: Number(workflow.maxOutputTokens || 8192),
+        thinkingConfig: { thinkingBudget: Number(workflow.thinkingBudget || 0) }
+      };
+      const responseMimeType = geminiResponseMimeType(workflow);
+      if (responseMimeType) generationConfig.responseMimeType = responseMimeType;
       const payload = {
         contents: [{ role: "user", parts }],
-        generationConfig: {
-          temperature: Number(workflow.temperature ?? 0.1),
-          maxOutputTokens: Number(workflow.maxOutputTokens || 8192),
-          thinkingConfig: { thinkingBudget: Number(workflow.thinkingBudget || 0) }
-        }
+        generationConfig
       };
       const timeoutMs = Number(workflow.timeoutMs || 90000);
       const result = apiKey
@@ -57,6 +60,13 @@ function createGeminiProvider(deps) {
       };
     }
   };
+}
+
+function geminiResponseMimeType(workflow = {}) {
+  if (workflow.responseMimeType === false || workflow.responseMimeType === "none") return "";
+  if (typeof workflow.responseMimeType === "string" && workflow.responseMimeType.trim()) return workflow.responseMimeType.trim();
+  if (workflow.outputSchema && typeof workflow.outputSchema === "object") return "application/json";
+  return "";
 }
 
 async function fetchWithVertexAdc(google, url, payload, timeoutMs) {

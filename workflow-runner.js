@@ -26,7 +26,9 @@ function composePrompt(workflow, inputLabel = "") {
     [
       "Rules:",
       "- Return strict JSON only.",
+      "- The entire response must start with { and end with }.",
       "- Do not wrap JSON in markdown.",
+      "- Do not include prose, commentary, headings, bullets, or code fences outside the JSON object.",
       "- Split long bullets into structured array items.",
       "- Use sourceText/page when available.",
       "- If information is missing, add it to missingInformation or manualReview.reasons."

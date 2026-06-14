@@ -59,6 +59,7 @@ async function main() {
 
   let capturedGeminiUrl = "";
   let capturedGeminiHeaders = {};
+  let capturedGeminiPayload = null;
   const apiKeyEngine = createDocumentWorkflowEngine({
     google: {
       apiKey: async () => "test-gemini-key",
@@ -70,6 +71,7 @@ async function main() {
     fetchJson: async (url, payload, timeoutMs, headers) => {
       capturedGeminiUrl = url;
       capturedGeminiHeaders = headers;
+      capturedGeminiPayload = payload;
       return {
         statusCode: 200,
         body: "{}",
@@ -95,6 +97,7 @@ async function main() {
   });
   assert.match(capturedGeminiUrl, /generativelanguage\.googleapis\.com/, "Gemini API key mode should use the Developer API endpoint");
   assert.equal(capturedGeminiHeaders["x-goog-api-key"], "test-gemini-key", "Gemini API key should be sent as x-goog-api-key");
+  assert.equal(capturedGeminiPayload.generationConfig.responseMimeType, "application/json", "Gemini structured workflows should request JSON output");
   assert.equal(apiKeyResult.diagnostics.provider.mode, "developer-api-key-document-analysis");
   assert.equal(apiKeyResult.normalizedReport.documentSummary.summary, "API key mode works.");
 

@@ -61,6 +61,7 @@ function defaultPolicyAnalysisWorkflow() {
       "Read the PDF attachment or pasted policy text.",
       "Answer by filling the required PolicyAnalysisReport JSON object.",
       "Do not output markdown. Do not include prose before or after the JSON.",
+      "The first character of the response must be { and the last character must be }.",
       "Keep each item concise. Split long bullet paragraphs into separate structured items.",
       "For each extracted item, include: finding, detail, whyItMatters, userAction, sourceText, page, confidence, and manualReviewRequired.",
       "Use low confidence when the wording is missing, only implied, or requires the carrier to confirm."
@@ -173,6 +174,7 @@ function defaultPolicyAnalysisWorkflow() {
       "Preserve facts, split long bullets into separate items, and do not invent missing policy terms.",
       "If the raw output uses markdown or prose, map it into the closest section and mark confidence low or medium.",
       "Do not drop source snippets, warnings, deadlines, exclusions, or manual review triggers.",
+      "The first character of the response must be { and the last character must be }.",
       "Return strict JSON only."
     ].join("\n"),
     displayConfig: {

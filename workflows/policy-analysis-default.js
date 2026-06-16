@@ -76,7 +76,7 @@ function defaultPolicyAnalysisWorkflow() {
   };
   return {
     workflowId: "policy_analysis",
-    version: "v2",
+    version: "v3",
     providerId: "gemini",
     model: "gemini-2.5-flash",
     normalizerId: "policy_analysis",
@@ -99,9 +99,12 @@ function defaultPolicyAnalysisWorkflow() {
       "Do not output markdown. Do not include prose before or after the JSON.",
       "The first character of the response must be { and the last character must be }.",
       "Use exactly the top-level keys shown in the output schema. Do not rename keys and do not add wrapper keys such as answers, result, report, or analysis.",
+      "The top-level keys must include documentSummary, identity, coverageHighlights, financialTerms, medicalBenefits, preExistingCondition, accidentMedical, exclusions, claimPreparation, deadlines, manualReview, qualityGate, missingInformation, nextSteps, and citations.",
       "Keep each item concise. Split long bullet paragraphs into separate structured items.",
       "Use empty arrays for sections with no evidence. Do not omit required arrays or objects.",
       "For each extracted item, include: finding, detail, whyItMatters, userAction, sourceText, page, confidence, and manualReviewRequired.",
+      "Do not append bare confidence words such as high or medium to the end of finding/detail text. Put confidence only in the confidence field.",
+      "If source evidence exists, put the exact quote in sourceText and the page number in page; do not mix source text into finding.",
       "Use confidence only as high, medium, or low.",
       "Use low confidence when the wording is missing, only implied, or requires the carrier to confirm."
     ].join("\n"),

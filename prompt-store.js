@@ -15,11 +15,77 @@ function safeJson(text, fallback) {
   }
 }
 
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function mergeObjectDefaults(defaults, override) {
+  if (!isPlainObject(defaults)) return override === undefined ? defaults : override;
+  if (!isPlainObject(override)) return defaults;
+  const merged = { ...defaults };
+  Object.entries(override).forEach(([key, value]) => {
+    merged[key] = isPlainObject(value) && isPlainObject(defaults[key])
+      ? mergeObjectDefaults(defaults[key], value)
+      : value;
+  });
+  return merged;
+}
+
+function migrateLegacyPromptPack(promptPack = {}, defaults = {}) {
+  const migrated = { ...promptPack };
+  const legacyMappings = {
+    summary: "document_identity_prompt",
+    fileSummary: "document_identity_prompt",
+    coverageHighlights: "medical_benefit_prompt",
+    warnings: "manual_review_prompt",
+    missingInfo: "final_report_prompt",
+    claimPreparation: "claim_deadline_prompt",
+    nextSteps: "final_report_prompt",
+    exclusions: "exclusion_prompt",
+    preExisting: "pre_existing_prompt",
+    medicalBenefits: "medical_benefit_prompt",
+    financialTerms: "financial_risk_prompt"
+  };
+  Object.entries(legacyMappings).forEach(([legacyKey, targetKey]) => {
+    if (!migrated[legacyKey] || migrated[targetKey]) return;
+    migrated[targetKey] = [
+      defaults[targetKey],
+      "",
+      "Legacy admin prompt to preserve:",
+      String(migrated[legacyKey])
+    ].filter(Boolean).join("\n");
+  });
+  return mergeObjectDefaults(defaults, migrated);
+}
+
+function buildQuestionsFromPromptPack(promptPack = {}, defaults = []) {
+  const byId = new Map((defaults || []).map((question) => [question.id, { ...question }]));
+  Object.entries(promptPack || {}).forEach(([id, prompt]) => {
+    const existing = byId.get(id);
+    if (existing) {
+      existing.prompt = prompt;
+      byId.set(id, existing);
+      return;
+    }
+    byId.set(id, {
+      id,
+      title: id.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+      prompt
+    });
+  });
+  return Array.from(byId.values());
+}
+
 function normalizeWorkflowConfig(config = {}) {
   const baseFactory = DEFAULT_WORKFLOWS[config.workflowId] || DEFAULT_WORKFLOWS.policy_analysis;
   const defaults = baseFactory();
-  const questions = Array.isArray(config.questions) && config.questions.length ? config.questions : defaults.questions;
-  const promptPack = config.promptPack && typeof config.promptPack === "object" ? config.promptPack : defaults.promptPack;
+  const promptPack = migrateLegacyPromptPack(
+    isPlainObject(config.promptPack) ? config.promptPack : defaults.promptPack,
+    defaults.promptPack || {}
+  );
+  const questions = Array.isArray(config.questions) && config.questions.length
+    ? buildQuestionsFromPromptPack(promptPack, config.questions)
+    : buildQuestionsFromPromptPack(promptPack, defaults.questions);
   return {
     ...defaults,
     ...config,
@@ -31,8 +97,8 @@ function normalizeWorkflowConfig(config = {}) {
     legacyAdapterId: String(config.legacyAdapterId ?? defaults.legacyAdapterId ?? ""),
     promptPack,
     questions,
-    outputSchema: config.outputSchema && typeof config.outputSchema === "object" ? config.outputSchema : defaults.outputSchema,
-    displayConfig: config.displayConfig && typeof config.displayConfig === "object" ? config.displayConfig : defaults.displayConfig
+    outputSchema: mergeObjectDefaults(defaults.outputSchema, isPlainObject(config.outputSchema) ? config.outputSchema : defaults.outputSchema),
+    displayConfig: mergeObjectDefaults(defaults.displayConfig, isPlainObject(config.displayConfig) ? config.displayConfig : defaults.displayConfig)
   };
 }
 

@@ -17,7 +17,26 @@ async function main() {
   });
 
   const defaults = engine.getDefaultWorkflow("policy_analysis");
+  assert.equal(defaults.version, "v3", "default policy workflow should use the v3 schema-aligned prompt pack");
   engine.saveWorkflow("policy_analysis", { ...defaults, providerId: "mock" }, "self-test");
+
+  const legacyPromptEngine = createDocumentWorkflowEngine({
+    getSecret: (integrationId, secretName) => {
+      if (integrationId !== "document_workflow" || secretName !== "policy_analysis:promptPack") return undefined;
+      return JSON.stringify({
+        summary: "Legacy summary prompt.",
+        warnings: "Legacy warning prompt.",
+        claimPreparation: "Legacy claim prompt."
+      });
+    },
+    setSecret: () => {}
+  });
+  const migrated = legacyPromptEngine.getWorkflow("policy_analysis");
+  assert.ok(migrated.promptPack.document_identity_prompt.includes("Legacy summary prompt."), "legacy summary prompt should migrate into document_identity_prompt");
+  assert.ok(migrated.promptPack.manual_review_prompt.includes("Legacy warning prompt."), "legacy warnings prompt should migrate into manual_review_prompt");
+  assert.ok(migrated.promptPack.claim_deadline_prompt.includes("Legacy claim prompt."), "legacy claim prompt should migrate into claim_deadline_prompt");
+  assert.ok(migrated.outputSchema.medicalBenefits.medicalEvacuation, "schema merge should preserve new medicalBenefits fields");
+  assert.ok(migrated.questions.some((question) => question.id === "document_identity_prompt"), "migrated workflow should expose schema-aligned questions");
 
   const reportResult = await engine.runToReport({
     workflowId: "policy_analysis",

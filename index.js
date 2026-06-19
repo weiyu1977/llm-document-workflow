@@ -2,9 +2,10 @@ const { createGeminiProvider } = require("./provider-adapters/gemini-provider");
 const { createMockProvider } = require("./provider-adapters/mock-provider");
 const { createProviderRegistry } = require("./provider-adapters/provider-registry");
 const { createPromptStore } = require("./prompt-store");
-const { runDocumentWorkflowToReport, composePrompt } = require("./workflow-runner");
+const { runDocumentWorkflowToReport, composePrompt, composePromptSections, estimateTokens, workflowPromptFingerprint } = require("./workflow-runner");
 const { defaultPolicyAnalysisWorkflow } = require("./workflows/policy-analysis-default");
 const { parseJsonFromText } = require("./normalizer/json-extractor");
+const { listDebugFixtures, getDebugFixture } = require("./debug-fixtures");
 const { normalizePolicyAnalysisReport, validatePolicyAnalysisReport } = require("./normalizer/schema-validator");
 const { createNormalizerRegistry, createJsonPassthroughNormalizer } = require("./normalizer/normalizer-registry");
 const { createPolicyAnalysisNormalizer } = require("./normalizer/policy-analysis-normalizer");
@@ -93,18 +94,23 @@ function createDocumentWorkflowEngine(deps = {}) {
     },
     composeWorkflowPrompt({ workflowId = "policy_analysis", inputLabel = "document" } = {}) {
       const workflow = promptStore.readWorkflow(workflowId);
-      const prompt = composePrompt(workflow, inputLabel);
+      const promptInfo = composePromptSections(workflow, inputLabel);
       return {
         workflowId: workflow.workflowId,
         version: workflow.version,
         providerId: workflow.providerId,
         model: workflow.model,
         inputLabel,
-        prompt,
-        promptLength: prompt.length,
+        prompt: promptInfo.prompt,
+        sections: promptInfo.sections,
+        promptLength: promptInfo.promptLength,
+        estimatedTokens: promptInfo.estimatedTokens,
+        promptFingerprint: promptInfo.promptFingerprint,
         promptPackKeys: workflow.promptPack && typeof workflow.promptPack === "object" ? Object.keys(workflow.promptPack) : []
       };
     },
+    listDebugFixtures,
+    getDebugFixture,
     parseRawOutput(rawOutput = "") {
       return parseJsonFromText(rawOutput);
     },
@@ -159,6 +165,9 @@ function createDocumentWorkflowEngine(deps = {}) {
       });
     },
     composePrompt,
+    composePromptSections,
+    estimateTokens,
+    workflowPromptFingerprint,
     parseJsonFromText,
     normalizePolicyAnalysisReport
   };
@@ -170,6 +179,11 @@ module.exports = {
   createNormalizerRegistry,
   createPolicyAnalysisNormalizer,
   defaultPolicyAnalysisWorkflow,
+  listDebugFixtures,
+  getDebugFixture,
+  composePromptSections,
+  estimateTokens,
+  workflowPromptFingerprint,
   parseJsonFromText,
   normalizePolicyAnalysisReport,
   validatePolicyAnalysisReport,

@@ -22,35 +22,113 @@ function createRunId() {
   return `dwf_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
-function composePrompt(workflow, inputLabel = "") {
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hashText(text) {
+  return crypto.createHash("sha256").update(String(text || "")).digest("hex");
+}
+
+function estimateTokens(text) {
+  const value = String(text || "");
+  if (!value) return 0;
+  const cjk = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const nonCjk = value.length - cjk;
+  return Math.ceil(cjk * 1.4 + nonCjk / 4);
+}
+
+function workflowPromptFingerprint(workflow = {}) {
+  return hashText(stableStringify({
+    workflowId: workflow.workflowId,
+    version: workflow.version,
+    providerId: workflow.providerId,
+    model: workflow.model,
+    normalizerId: workflow.normalizerId,
+    parserStrategy: workflow.parserStrategy,
+    systemPrompt: workflow.systemPrompt,
+    businessContext: workflow.businessContext,
+    taskPrompt: workflow.taskPrompt,
+    promptPack: workflow.promptPack,
+    schemaContract: workflow.schemaContract,
+    outputSchema: workflow.promptComposition?.includeFullOutputSchema ? workflow.outputSchema : undefined,
+    repairPrompt: workflow.repairPrompt,
+    displayConfig: workflow.promptComposition?.includeDisplayConfig ? workflow.displayConfig : undefined
+  }));
+}
+
+function compactSchemaContract(workflow = {}) {
+  if (workflow.schemaContract) {
+    return typeof workflow.schemaContract === "string"
+      ? workflow.schemaContract
+      : JSON.stringify(workflow.schemaContract, null, 2);
+  }
+  return JSON.stringify(workflow.outputSchema || {}, null, 2);
+}
+
+function composeQuestionChecklist(questions = []) {
+  return questions
+    .map((question, index) => `${index + 1}. [${question.id}] ${question.title || question.id}`)
+    .join("\n");
+}
+
+function composePromptSections(workflow, inputLabel = "") {
+  const composition = workflow.promptComposition || {};
+  const includeQuestionPrompts = composition.includeQuestionPrompts !== false;
+  const includeFullOutputSchema = composition.includeFullOutputSchema === true;
+  const includeDisplayConfig = composition.includeDisplayConfig === true;
   const promptPackLines = workflow.promptPack && typeof workflow.promptPack === "object"
     ? Object.entries(workflow.promptPack)
       .map(([key, value]) => `### ${key}\n${value}`)
       .join("\n\n")
     : "";
-  const questionLines = (workflow.questions || [])
-    .map((question, index) => `${index + 1}. [${question.id}] ${question.title}\n${question.prompt}`)
-    .join("\n\n");
-  return [
-    workflow.systemPrompt,
-    workflow.businessContext ? `Business context:\n${workflow.businessContext}` : "",
-    workflow.taskPrompt ? `Task:\n${workflow.taskPrompt}` : "",
-    promptPackLines ? `Prompt pack modules:\n${promptPackLines}` : "",
-    questionLines ? `Questions to answer:\n${questionLines}` : "",
-    "Required JSON schema:",
-    JSON.stringify(workflow.outputSchema || {}, null, 2),
-    [
+  const questionLines = includeQuestionPrompts
+    ? (workflow.questions || [])
+      .map((question, index) => `${index + 1}. [${question.id}] ${question.title}\n${question.prompt}`)
+      .join("\n\n")
+    : composeQuestionChecklist(workflow.questions || []);
+  const schemaText = includeFullOutputSchema
+    ? JSON.stringify(workflow.outputSchema || {}, null, 2)
+    : compactSchemaContract(workflow);
+  const sections = {
+    systemPrompt: workflow.systemPrompt || "",
+    businessContext: workflow.businessContext ? `Business context:\n${workflow.businessContext}` : "",
+    taskPrompt: workflow.taskPrompt ? `Task:\n${workflow.taskPrompt}` : "",
+    promptPack: promptPackLines ? `Prompt pack modules:\n${promptPackLines}` : "",
+    questions: questionLines ? `${includeQuestionPrompts ? "Questions to answer" : "Section checklist"}:\n${questionLines}` : "",
+    schemaContract: `${includeFullOutputSchema ? "Required JSON schema" : "Required JSON contract"}:\n${schemaText}`,
+    displayConfig: includeDisplayConfig && workflow.displayConfig ? `Display config:\n${JSON.stringify(workflow.displayConfig, null, 2)}` : "",
+    rules: [
       "Rules:",
       "- Return strict JSON only.",
       "- The entire response must start with { and end with }.",
       "- Do not wrap JSON in markdown.",
       "- Do not include prose, commentary, headings, bullets, or code fences outside the JSON object.",
+      "- Do not repeat long policy text. Use concise sourceText snippets only for evidence.",
+      "- Put confidence only in the confidence field; never append confidence words to findings.",
       "- Split long bullets into structured array items.",
       "- Use sourceText/page when available.",
+      "- If a section cannot be completed, return an empty array/object and add manualReview plus qualityGate reasons.",
       "- If information is missing, add it to missingInformation or manualReview.reasons."
     ].join("\n"),
-    inputLabel ? `Input label: ${inputLabel}` : ""
-  ].filter(Boolean).join("\n\n");
+    inputLabel: inputLabel ? `Input label: ${inputLabel}` : ""
+  };
+  const prompt = Object.values(sections).filter(Boolean).join("\n\n");
+  return {
+    sections,
+    prompt,
+    promptLength: prompt.length,
+    estimatedTokens: estimateTokens(prompt),
+    promptFingerprint: workflowPromptFingerprint(workflow)
+  };
+}
+
+function composePrompt(workflow, inputLabel = "") {
+  return composePromptSections(workflow, inputLabel).prompt;
 }
 
 function composeContinuationPrompt(workflow, missingSections = []) {
@@ -64,8 +142,8 @@ function composeContinuationPrompt(workflow, missingSections = []) {
     "Use the same schema shape as the original PolicyAnalysisReport for each returned section.",
     "If a section is not present in the document, return an empty section and add a manualReview reason.",
     "The response must start with { and end with }.",
-    "Required JSON schema:",
-    JSON.stringify(workflow.outputSchema || {}, null, 2)
+    "Required JSON contract:",
+    compactSchemaContract(workflow)
   ].filter(Boolean).join("\n\n");
 }
 
@@ -267,7 +345,8 @@ function markPartialReport(report, diagnostics, reason = "") {
 
 async function runDocumentWorkflowToReport({ workflow, provider, normalizer, files = [], text = "", fileName = "", fallbackAnalysis = null }) {
   const started = Date.now();
-  const prompt = composePrompt(workflow, fileName || files[0]?.originalname || files[0]?.name || "document");
+  const promptInfo = composePromptSections(workflow, fileName || files[0]?.originalname || files[0]?.name || "document");
+  const prompt = promptInfo.prompt;
   const providerResult = await provider.generate({ workflow, files, text, prompt, mode: "analysis" });
   const rawOutput = providerResult.rawText || "";
   let normalized = await normalizeRawOutput({ rawOutput, workflow, provider, normalizer, fallbackAnalysis });
@@ -330,7 +409,7 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
       }
     }
   }
-  return {
+  const result = {
     workflow: {
       workflowId: workflow.workflowId,
       version: workflow.version,
@@ -345,9 +424,18 @@ async function runDocumentWorkflowToReport({ workflow, provider, normalizer, fil
     diagnostics: normalized.diagnostics,
     providerResult
   };
+  result.diagnostics.prompt = {
+    length: promptInfo.promptLength,
+    estimatedTokens: promptInfo.estimatedTokens,
+    fingerprint: promptInfo.promptFingerprint
+  };
+  return result;
 }
 
 module.exports = {
   composePrompt,
+  composePromptSections,
+  estimateTokens,
+  workflowPromptFingerprint,
   runDocumentWorkflowToReport
 };

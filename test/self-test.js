@@ -17,7 +17,9 @@ async function main() {
   });
 
   const defaults = engine.getDefaultWorkflow("policy_analysis");
-  assert.equal(defaults.version, "v3", "default policy workflow should use the v3 schema-aligned prompt pack");
+  assert.equal(defaults.version, "v4", "default policy workflow should use the v4 schema-contract prompt pack");
+  assert.ok(defaults.schemaContract, "default policy workflow should expose a compact schema contract");
+  assert.equal(defaults.promptComposition.includeFullOutputSchema, false, "v4 should avoid sending the full schema by default");
   engine.saveWorkflow("policy_analysis", { ...defaults, providerId: "mock" }, "self-test");
 
   const legacyPromptEngine = createDocumentWorkflowEngine({
@@ -80,8 +82,10 @@ async function main() {
   assert.equal(inspection.summary.workflowId, "policy_analysis", "inspectWorkflow should expose workflow metadata");
   assert.ok(inspection.summary.promptPackKeys.includes("document_identity_prompt"), "inspectWorkflow should expose prompt pack keys");
   const composed = engine.composeWorkflowPrompt({ workflowId: "policy_analysis", inputLabel: "debug-policy.pdf" });
-  assert.match(composed.prompt, /Required JSON schema/, "composeWorkflowPrompt should expose final prompt text");
+  assert.match(composed.prompt, /Required JSON contract/, "composeWorkflowPrompt should expose final prompt text");
   assert.equal(composed.inputLabel, "debug-policy.pdf");
+  assert.ok(composed.estimatedTokens > 0, "composeWorkflowPrompt should expose token estimate");
+  assert.ok(composed.promptFingerprint, "composeWorkflowPrompt should expose prompt fingerprint");
   const rawParse = engine.parseRawOutput("{\"documentSummary\":{\"documentType\":\"insurance_policy\",\"summary\":\"ok\",\"confidence\":\"high\"}}");
   assert.equal(rawParse.method, "direct_json", "parseRawOutput should expose parser diagnostics");
   const normalizedDebug = engine.normalizeParsedOutput({

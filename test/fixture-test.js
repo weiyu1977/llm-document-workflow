@@ -2,7 +2,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { parseJsonFromText } = require("../normalizer/json-extractor");
-const { runDocumentWorkflowToReport } = require("../workflow-runner");
+const { runDocumentWorkflowToReport, composePromptSections, workflowPromptFingerprint } = require("../workflow-runner");
+const { listDebugFixtures, getDebugFixture } = require("../debug-fixtures");
+const { defaultPolicyAnalysisWorkflow } = require("../workflows/policy-analysis-default");
 const { createPolicyAnalysisNormalizer } = require("../normalizer/policy-analysis-normalizer");
 const { markdownFallbackReport } = require("../normalizer/markdown-fallback");
 const { normalizePolicyAnalysisReport, validatePolicyAnalysisReport } = require("../normalizer/schema-validator");
@@ -111,6 +113,27 @@ function testNestedBulletsFallback() {
   assert.ok(report.manualReview.reasons.length >= 3, "nested review bullets should be classified");
 }
 
+function testDebugFixtures() {
+  const fixtures = listDebugFixtures();
+  assert.ok(fixtures.length >= 5, "debug fixtures should include core parser cases");
+  const partial = getDebugFixture("partial_json");
+  assert.ok(partial.rawOutput.includes("Partial Output Plan"), "partial fixture should expose raw output");
+  const parsed = parseJsonFromText(partial.rawOutput);
+  assert.ok(parsed.parsed, "partial fixture should recover a partial object");
+  assert.equal(parsed.isPartial, true);
+}
+
+function testPromptV4IsSlimmed() {
+  const workflow = defaultPolicyAnalysisWorkflow();
+  assert.equal(workflow.version, "v4");
+  const promptInfo = composePromptSections(workflow, "sample.pdf");
+  assert.ok(promptInfo.prompt.includes("Required JSON contract"), "v4 prompt should use compact schema contract");
+  assert.ok(!promptInfo.prompt.includes("Required JSON schema"), "v4 prompt should avoid full schema label");
+  assert.ok(!promptInfo.prompt.includes("Questions to answer"), "v4 prompt should not duplicate full question prompts");
+  assert.ok(promptInfo.estimatedTokens > 0, "prompt should include token estimate");
+  assert.equal(promptInfo.promptFingerprint, workflowPromptFingerprint(workflow));
+}
+
 testFencedPolicyReport();
 testNullFallback();
 testAnswersOutput();
@@ -118,6 +141,8 @@ testMarkdownFallback();
 testProsePlusJson();
 testTruncatedJsonFallback();
 testNestedBulletsFallback();
+testDebugFixtures();
+testPromptV4IsSlimmed();
 
 testWorkflowPartialDoesNotMarkdownFallback()
   .then(() => console.log("llm-document-workflow fixture tests passed"))

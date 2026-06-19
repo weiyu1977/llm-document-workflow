@@ -98,6 +98,10 @@ function normalizeWorkflowConfig(config = {}) {
     promptPack,
     questions,
     outputSchema: mergeObjectDefaults(defaults.outputSchema, isPlainObject(config.outputSchema) ? config.outputSchema : defaults.outputSchema),
+    schemaContract: config.schemaContract === undefined
+      ? defaults.schemaContract
+      : (isPlainObject(config.schemaContract) ? mergeObjectDefaults(defaults.schemaContract, config.schemaContract) : config.schemaContract),
+    promptComposition: mergeObjectDefaults(defaults.promptComposition, isPlainObject(config.promptComposition) ? config.promptComposition : defaults.promptComposition),
     displayConfig: mergeObjectDefaults(defaults.displayConfig, isPlainObject(config.displayConfig) ? config.displayConfig : defaults.displayConfig)
   };
 }
@@ -148,6 +152,8 @@ function createPromptStore({ getSecret, setSecret }) {
       promptPack: read("promptPack", defaults.promptPack),
       questions: read("questions", defaults.questions),
       outputSchema: read("outputSchema", defaults.outputSchema),
+      schemaContract: read("schemaContract", defaults.schemaContract),
+      promptComposition: read("promptComposition", defaults.promptComposition),
       repairPrompt: read("repairPrompt", defaults.repairPrompt),
       displayConfig: read("displayConfig", defaults.displayConfig),
       maxOutputTokens: Number(read("maxOutputTokens", 8192)),
@@ -170,7 +176,7 @@ function createPromptStore({ getSecret, setSecret }) {
       updatedBy
     });
     ["version", "providerId", "model", "normalizerId", "legacyAdapterId", "parserStrategy", "systemPrompt", "businessContext", "taskPrompt", "repairPrompt", "maxOutputTokens", "timeoutMs"].forEach((field) => save(field, normalized[field]));
-    ["promptPack", "questions", "outputSchema", "displayConfig"].forEach((field) => save(field, normalized[field]));
+    ["promptPack", "questions", "outputSchema", "schemaContract", "promptComposition", "displayConfig"].forEach((field) => save(field, normalized[field]));
     return readWorkflow(workflowId);
   };
   return {

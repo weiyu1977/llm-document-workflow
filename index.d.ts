@@ -16,6 +16,12 @@ export interface DocumentWorkflowConfig {
   businessContext?: string;
   taskPrompt: string;
   promptPack?: Record<string, string>;
+  promptComposition?: {
+    includeQuestionPrompts?: boolean;
+    includeFullOutputSchema?: boolean;
+    includeDisplayConfig?: boolean;
+  };
+  schemaContract?: string | Record<string, unknown>;
   questions: WorkflowQuestion[];
   outputSchema: Record<string, unknown>;
   repairPrompt?: string;
@@ -101,7 +107,10 @@ export interface ComposedWorkflowPrompt {
   model: string;
   inputLabel: string;
   prompt: string;
+  sections?: Record<string, string>;
   promptLength: number;
+  estimatedTokens?: number;
+  promptFingerprint?: string;
   promptPackKeys: string[];
 }
 
@@ -136,6 +145,8 @@ export interface DocumentWorkflowEngine {
   listNormalizers(): Array<{ id: string; name: string; schemaId: string }>;
   inspectWorkflow(workflowId?: string): WorkflowInspection;
   composeWorkflowPrompt(input?: { workflowId?: string; inputLabel?: string }): ComposedWorkflowPrompt;
+  listDebugFixtures(): Array<Record<string, unknown>>;
+  getDebugFixture(id: string): Record<string, unknown> | null;
   parseRawOutput(rawOutput: string): RawOutputParseResult;
   normalizeParsedOutput<TReport = unknown>(input: { workflowId?: string; parsed: unknown; fallbackAnalysis?: unknown }): NormalizedWorkflowOutput<TReport>;
   validatePolicyAnalysisReport(report: unknown): { ok: boolean; errors: string[] };
@@ -156,6 +167,11 @@ export interface CreateDocumentWorkflowEngineOptions {
 
 export function createDocumentWorkflowEngine(options?: CreateDocumentWorkflowEngineOptions): DocumentWorkflowEngine;
 export function defaultPolicyAnalysisWorkflow(): DocumentWorkflowConfig;
+export function listDebugFixtures(): Array<Record<string, unknown>>;
+export function getDebugFixture(id: string): Record<string, unknown> | null;
+export function composePromptSections(workflow: DocumentWorkflowConfig, inputLabel?: string): ComposedWorkflowPrompt;
+export function estimateTokens(text: string): number;
+export function workflowPromptFingerprint(workflow: DocumentWorkflowConfig): string;
 export function parseJsonFromText(text: string): { parsed: unknown; method: string; error?: string };
 export function createJsonPassthroughNormalizer(): DocumentNormalizer;
 export function createPolicyAnalysisNormalizer(): DocumentNormalizer;

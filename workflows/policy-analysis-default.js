@@ -76,12 +76,12 @@ function defaultPolicyAnalysisWorkflow() {
   };
   return {
     workflowId: "policy_analysis",
-    version: "v3",
+    version: "v4",
     providerId: "gemini",
     model: "gemini-2.5-flash",
     normalizerId: "policy_analysis",
     legacyAdapterId: "visitor_insurance",
-    parserStrategy: "policy_report_json_v2",
+    parserStrategy: "policy_report_json_v4",
     systemPrompt: [
       "You are a careful document analyst for visitor medical insurance and travel insurance policy documents.",
       "Use only the uploaded document or pasted text. Do not invent coverage, claim approval, eligibility, deadlines, or carrier intent.",
@@ -101,6 +101,7 @@ function defaultPolicyAnalysisWorkflow() {
       "Use exactly the top-level keys shown in the output schema. Do not rename keys and do not add wrapper keys such as answers, result, report, or analysis.",
       "The top-level keys must include documentSummary, identity, coverageHighlights, financialTerms, medicalBenefits, preExistingCondition, accidentMedical, exclusions, claimPreparation, deadlines, manualReview, qualityGate, missingInformation, nextSteps, and citations.",
       "Keep each item concise. Split long bullet paragraphs into separate structured items.",
+      "Do not copy long paragraphs from the policy into every section. Use short sourceText snippets only where they support a finding.",
       "Use empty arrays for sections with no evidence. Do not omit required arrays or objects.",
       "For each extracted item, include: finding, detail, whyItMatters, userAction, sourceText, page, confidence, and manualReviewRequired.",
       "Do not append bare confidence words such as high or medium to the end of finding/detail text. Put confidence only in the confidence field.",
@@ -109,6 +110,52 @@ function defaultPolicyAnalysisWorkflow() {
       "Use low confidence when the wording is missing, only implied, or requires the carrier to confirm."
     ].join("\n"),
     promptPack,
+    promptComposition: {
+      includeQuestionPrompts: false,
+      includeFullOutputSchema: false,
+      includeDisplayConfig: true
+    },
+    schemaContract: {
+      topLevelKeys: [
+        "documentSummary",
+        "identity",
+        "coverageHighlights",
+        "financialTerms",
+        "medicalBenefits",
+        "preExistingCondition",
+        "accidentMedical",
+        "exclusions",
+        "claimPreparation",
+        "deadlines",
+        "manualReview",
+        "qualityGate",
+        "missingInformation",
+        "nextSteps",
+        "citations"
+      ],
+      evidenceItem: {
+        requiredFields: ["finding", "detail", "whyItMatters", "userAction", "sourceText", "page", "confidence", "manualReviewRequired"],
+        confidenceValues: ["high", "medium", "low"],
+        sourceTextRule: "Use concise exact snippets only; do not repeat long policy paragraphs."
+      },
+      sectionShapes: {
+        documentSummary: "object with fileName, documentType, carrier, productName, policyType, summary, confidence",
+        identity: "object of evidence items plus insuredNames/travelDates arrays",
+        coverageHighlights: "array of evidence items",
+        financialTerms: "object with arrays: policyMaximum, deductible, coinsurance, outOfPocketMax, perIncidentLimit, benefitCaps",
+        medicalBenefits: "object with arrays: er, urgentCare, hospitalization, icu, ambulance, surgery, physician, diagnostics, prescriptionDrugs, dental, medicalEvacuation",
+        preExistingCondition: "object with summary/definition/exclusion/acuteOnset/stabilityRequirement/lookbackPeriod/waitingPeriod plus arrays ageLimits/coverageLimits/warnings",
+        accidentMedical: "object with arrays: er, hospitalization, surgery, ambulance, separateBilling, medicalEvacuation, exclusions",
+        exclusions: "object with arrays: alcoholDrug, hazardousActivity, pregnancy, routineCare, mentalHealth, sports, residenceCountry, general",
+        claimPreparation: "array of evidence items",
+        deadlines: "array with type, date, relativeRule, text, whyItMatters, userAction, sourceText, page, confidence",
+        manualReview: "object with required boolean and reasons array",
+        qualityGate: "object with status complete|needs_review|incomplete|partial, missingCriticalFields array, manualReviewReasons array",
+        missingInformation: "array of evidence items",
+        nextSteps: "array of evidence items",
+        citations: "array of evidence items"
+      }
+    },
     questions: [
       { id: "document_identity_prompt", title: "Document identity", prompt: promptPack.document_identity_prompt },
       { id: "medical_benefit_prompt", title: "Medical benefits", prompt: promptPack.medical_benefit_prompt },

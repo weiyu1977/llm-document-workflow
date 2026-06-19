@@ -76,6 +76,36 @@ async function main() {
   assert.ok(engine.listProviders().some((provider) => provider.id === "custom_test"), "custom provider should be registered");
   assert.ok(engine.listProviders().some((provider) => provider.id === "gemini" && /Gemini/.test(provider.name)), "Gemini provider should be registered");
 
+  const inspection = engine.inspectWorkflow("policy_analysis");
+  assert.equal(inspection.summary.workflowId, "policy_analysis", "inspectWorkflow should expose workflow metadata");
+  assert.ok(inspection.summary.promptPackKeys.includes("document_identity_prompt"), "inspectWorkflow should expose prompt pack keys");
+  const composed = engine.composeWorkflowPrompt({ workflowId: "policy_analysis", inputLabel: "debug-policy.pdf" });
+  assert.match(composed.prompt, /Required JSON schema/, "composeWorkflowPrompt should expose final prompt text");
+  assert.equal(composed.inputLabel, "debug-policy.pdf");
+  const rawParse = engine.parseRawOutput("{\"documentSummary\":{\"documentType\":\"insurance_policy\",\"summary\":\"ok\",\"confidence\":\"high\"}}");
+  assert.equal(rawParse.method, "direct_json", "parseRawOutput should expose parser diagnostics");
+  const normalizedDebug = engine.normalizeParsedOutput({
+    workflowId: "policy_analysis",
+    parsed: {
+      documentSummary: { documentType: "insurance_policy", summary: "ok", confidence: "high" },
+      coverageHighlights: [],
+      financialTerms: {},
+      medicalBenefits: {},
+      preExistingCondition: {},
+      accidentMedical: {},
+      exclusions: {},
+      claimPreparation: [],
+      deadlines: [],
+      manualReview: { required: true, reasons: [] },
+      missingInformation: [],
+      nextSteps: [],
+      citations: []
+    }
+  });
+  assert.equal(normalizedDebug.workflowId, "policy_analysis", "normalizeParsedOutput should expose normalized workflow output");
+  assert.equal(typeof normalizedDebug.validation.ok, "boolean", "debug normalization should return validation details");
+  assert.ok(normalizedDebug.normalizedReport.qualityGate, "debug normalization should return a quality gate");
+
   let capturedGeminiUrl = "";
   let capturedGeminiHeaders = {};
   let capturedGeminiPayload = null;

@@ -77,6 +77,54 @@ export interface DocumentWorkflowRunResult<TReport = unknown> {
   providerResult: ProviderGenerateResult;
 }
 
+export interface WorkflowInspection {
+  workflow: DocumentWorkflowConfig;
+  defaults: DocumentWorkflowConfig;
+  summary: {
+    workflowId: string;
+    version: string;
+    providerId: string;
+    model: string;
+    normalizerId: string;
+    parserStrategy: string;
+    promptPackKeys: string[];
+    questionCount: number;
+    hasOutputSchema: boolean;
+    hasRepairPrompt: boolean;
+  };
+}
+
+export interface ComposedWorkflowPrompt {
+  workflowId: string;
+  version: string;
+  providerId: string;
+  model: string;
+  inputLabel: string;
+  prompt: string;
+  promptLength: number;
+  promptPackKeys: string[];
+}
+
+export interface RawOutputParseResult {
+  parsed: unknown;
+  method: string;
+  error?: string;
+  isPartial?: boolean;
+  truncationDetected?: boolean;
+  truncationMarker?: string;
+  repairedJson?: string;
+  partialJson?: string;
+  recoveredSections?: string[];
+}
+
+export interface NormalizedWorkflowOutput<TReport = unknown> {
+  workflowId: string;
+  version: string;
+  normalizerId: string;
+  normalizedReport: TReport;
+  validation: { ok: boolean; errors: string[] };
+}
+
 export interface DocumentWorkflowEngine {
   registerProvider(provider: DocumentProvider): DocumentProvider;
   registerNormalizer<TReport = unknown>(normalizer: DocumentNormalizer<TReport>): DocumentNormalizer<TReport>;
@@ -86,6 +134,11 @@ export interface DocumentWorkflowEngine {
   listWorkflows(): DocumentWorkflowConfig[];
   listProviders(): Array<Record<string, unknown>>;
   listNormalizers(): Array<{ id: string; name: string; schemaId: string }>;
+  inspectWorkflow(workflowId?: string): WorkflowInspection;
+  composeWorkflowPrompt(input?: { workflowId?: string; inputLabel?: string }): ComposedWorkflowPrompt;
+  parseRawOutput(rawOutput: string): RawOutputParseResult;
+  normalizeParsedOutput<TReport = unknown>(input: { workflowId?: string; parsed: unknown; fallbackAnalysis?: unknown }): NormalizedWorkflowOutput<TReport>;
+  validatePolicyAnalysisReport(report: unknown): { ok: boolean; errors: string[] };
   runToReport<TReport = unknown>(input: { workflowId?: string; files?: Array<Record<string, unknown>>; text?: string; fileName?: string; fallbackAnalysis?: unknown }): Promise<DocumentWorkflowRunResult<TReport>>;
   run(input: { workflowId?: string; files?: Array<Record<string, unknown>>; text?: string; fileName?: string; fallbackAnalysis?: unknown }): Promise<unknown>;
 }
@@ -108,4 +161,5 @@ export function createJsonPassthroughNormalizer(): DocumentNormalizer;
 export function createPolicyAnalysisNormalizer(): DocumentNormalizer;
 export function createNormalizerRegistry(initialNormalizers?: Record<string, DocumentNormalizer>): unknown;
 export function normalizePolicyAnalysisReport(parsed: unknown, fallback?: unknown): NormalizerResult;
+export function validatePolicyAnalysisReport(report: unknown): { ok: boolean; errors: string[] };
 export function reportToVisitorInsuranceLegacyAnalysis(input: Record<string, unknown>): unknown;

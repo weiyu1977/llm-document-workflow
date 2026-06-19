@@ -5,7 +5,7 @@ const { createPromptStore } = require("./prompt-store");
 const { runDocumentWorkflowToReport, composePrompt } = require("./workflow-runner");
 const { defaultPolicyAnalysisWorkflow } = require("./workflows/policy-analysis-default");
 const { parseJsonFromText } = require("./normalizer/json-extractor");
-const { normalizePolicyAnalysisReport } = require("./normalizer/schema-validator");
+const { normalizePolicyAnalysisReport, validatePolicyAnalysisReport } = require("./normalizer/schema-validator");
 const { createNormalizerRegistry, createJsonPassthroughNormalizer } = require("./normalizer/normalizer-registry");
 const { createPolicyAnalysisNormalizer } = require("./normalizer/policy-analysis-normalizer");
 const { reportToVisitorInsuranceLegacyAnalysis } = require("./adapters/visitor-insurance-legacy");
@@ -70,6 +70,59 @@ function createDocumentWorkflowEngine(deps = {}) {
     listNormalizers() {
       return normalizerRegistry.list();
     },
+    inspectWorkflow(workflowId = "policy_analysis") {
+      const workflow = promptStore.readWorkflow(workflowId);
+      const defaults = this.getDefaultWorkflow(workflowId);
+      const promptPackKeys = workflow.promptPack && typeof workflow.promptPack === "object" ? Object.keys(workflow.promptPack) : [];
+      return {
+        workflow,
+        defaults,
+        summary: {
+          workflowId: workflow.workflowId,
+          version: workflow.version,
+          providerId: workflow.providerId,
+          model: workflow.model,
+          normalizerId: workflow.normalizerId || workflow.workflowId,
+          parserStrategy: workflow.parserStrategy || "",
+          promptPackKeys,
+          questionCount: Array.isArray(workflow.questions) ? workflow.questions.length : 0,
+          hasOutputSchema: Boolean(workflow.outputSchema && Object.keys(workflow.outputSchema).length),
+          hasRepairPrompt: Boolean(workflow.repairPrompt)
+        }
+      };
+    },
+    composeWorkflowPrompt({ workflowId = "policy_analysis", inputLabel = "document" } = {}) {
+      const workflow = promptStore.readWorkflow(workflowId);
+      const prompt = composePrompt(workflow, inputLabel);
+      return {
+        workflowId: workflow.workflowId,
+        version: workflow.version,
+        providerId: workflow.providerId,
+        model: workflow.model,
+        inputLabel,
+        prompt,
+        promptLength: prompt.length,
+        promptPackKeys: workflow.promptPack && typeof workflow.promptPack === "object" ? Object.keys(workflow.promptPack) : []
+      };
+    },
+    parseRawOutput(rawOutput = "") {
+      return parseJsonFromText(rawOutput);
+    },
+    normalizeParsedOutput({ workflowId = "policy_analysis", parsed, fallbackAnalysis = null } = {}) {
+      const workflow = promptStore.readWorkflow(workflowId);
+      const normalizer = resolveNormalizer(workflow);
+      const normalized = normalizer.normalize(parsed, fallbackAnalysis, { workflow });
+      return {
+        workflowId: workflow.workflowId,
+        version: workflow.version,
+        normalizerId: workflow.normalizerId || workflow.workflowId,
+        normalizedReport: normalized.report,
+        validation: normalized.validation
+      };
+    },
+    validatePolicyAnalysisReport(report) {
+      return validatePolicyAnalysisReport(report);
+    },
     async runToReport({ workflowId = "policy_analysis", files = [], text = "", fileName = "", fallbackAnalysis = null }) {
       const workflow = promptStore.readWorkflow(workflowId);
       return runDocumentWorkflowToReport({
@@ -119,5 +172,6 @@ module.exports = {
   defaultPolicyAnalysisWorkflow,
   parseJsonFromText,
   normalizePolicyAnalysisReport,
+  validatePolicyAnalysisReport,
   reportToVisitorInsuranceLegacyAnalysis
 };

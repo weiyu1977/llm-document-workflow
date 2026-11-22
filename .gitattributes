@@ -1,0 +1,9 @@
+# Text files are stored and checked out with LF on every machine, whatever
+# core.autocrlf is set to (2026-11-22). Directories or files that must keep
+# their exact bytes (evidence covered by recorded checksums, executed database
+# migrations, vendor deliveries) override this with their own -text or binary
+# rules, in this file or in a .gitattributes next to them.
+* text=auto eol=lf
+# Windows batch files run under cmd.exe and keep CRLF in the working tree.
+*.bat text eol=crlf
+*.cmd text eol=crlf
